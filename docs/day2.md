@@ -671,30 +671,30 @@ This method is more reliable for larger packages and slower internet connections
    - Event name: `HealthCheck`
    - Event template: **API Gateway AWS Proxy** (scroll down to find it)
    - Modify the Event JSON to:
-   ```json
-   {
-     "version": "2.0",
-     "routeKey": "GET /health",
-     "rawPath": "/health",
-     "headers": {
-       "accept": "application/json",
-       "content-type": "application/json",
-       "user-agent": "test-invoke"
-     },
-     "requestContext": {
-       "http": {
-         "method": "GET",
-         "path": "/health",
-         "protocol": "HTTP/1.1",
-         "sourceIp": "127.0.0.1",
-         "userAgent": "test-invoke"
-       },
-       "routeKey": "GET /health",
-       "stage": "$default"
-     },
-     "isBase64Encoded": false
-   }
-   ```
+```json
+{
+    "version": "2.0",
+    "routeKey": "GET /health",
+    "rawPath": "/health",
+    "headers": {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "user-agent": "test-invoke"
+    },
+    "requestContext": {
+    "http": {
+        "method": "GET",
+        "path": "/health",
+        "protocol": "HTTP/1.1",
+        "sourceIp": "127.0.0.1",
+        "userAgent": "test-invoke"
+    },
+    "routeKey": "GET /health",
+    "stage": "$default"
+    },
+    "isBase64Encoded": false
+}
+```
 3. Click **Save** → **Test**
 4. You should see a successful response with a body containing `{"status": "healthy", "use_s3": true}`
 
@@ -707,7 +707,7 @@ This method is more reliable for larger packages and slower internet connections
 1. In AWS Console, search for **S3**
 2. Click **Create bucket**
 3. Configuration:
-   - Bucket name: `twin-memory-[random-suffix]` (must be globally unique)
+   - Bucket name: `twin-memory-[random-suffix]` (must be globally unique) same as the S3 Bucket environment variable with our account id
    - Region: Same as your Lambda (e.g., us-east-1)
    - Leave all other settings as default
 4. Click **Create bucket**
@@ -716,7 +716,7 @@ This method is more reliable for larger packages and slower internet connections
 ### Step 2: Update Lambda Environment
 
 1. Go back to Lambda → **Configuration** → **Environment variables**
-2. Update `S3_BUCKET` with your actual bucket name
+2. Update `S3_BUCKET` with your actual bucket name (for automation script we may need to skip this)
 3. Click **Save**
 
 ### Step 3: Add S3 Permissions to Lambda
