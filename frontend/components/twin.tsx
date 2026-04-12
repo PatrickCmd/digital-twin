@@ -2,6 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 interface Message {
     id: string;
@@ -36,50 +40,77 @@ export default function Twin() {
         };
 
         setMessages(prev => [...prev, userMessage]);
+        const messageText = input;
         setInput('');
         setIsLoading(true);
 
-        try {
-            const response = await fetch('https://9ofgw9svng.execute-api.us-east-1.amazonaws.com/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: input,
-                    session_id: sessionId || undefined,
-                }),
-            });
+        const assistantMessageId = (Date.now() + 1).toString();
+        let buffer = '';
 
-            if (!response.ok) throw new Error('Failed to send message');
+        // Add empty assistant message that will be filled by streaming
+        setMessages(prev => [...prev, {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: '',
+            timestamp: new Date(),
+        }]);
 
-            const data = await response.json();
+        const controller = new AbortController();
 
-            if (!sessionId) {
-                setSessionId(data.session_id);
-            }
+        await fetchEventSource(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/chat/stream`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                message: messageText,
+                session_id: sessionId || undefined,
+            }),
+            signal: controller.signal,
+            openWhenHidden: true,
+            onmessage(ev) {
+                const data = JSON.parse(ev.data);
 
-            const assistantMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: data.response,
-                timestamp: new Date(),
-            };
+                if (data.type === 'session') {
+                    setSessionId(data.session_id);
+                } else if (data.type === 'chunk') {
+                    buffer += data.content;
+                    setMessages(prev =>
+                        prev.map(msg =>
+                            msg.id === assistantMessageId
+                                ? { ...msg, content: buffer }
+                                : msg
+                        )
+                    );
+                } else if (data.type === 'error') {
+                    setMessages(prev =>
+                        prev.map(msg =>
+                            msg.id === assistantMessageId
+                                ? { ...msg, content: `Error: ${data.message}` }
+                                : msg
+                        )
+                    );
+                }
+            },
+            onclose() {
+                setIsLoading(false);
+            },
+            onerror(err) {
+                console.error('SSE error:', err);
+                setMessages(prev =>
+                    prev.map(msg =>
+                        msg.id === assistantMessageId && !msg.content
+                            ? { ...msg, content: 'Sorry, I encountered an error. Please try again.' }
+                            : msg
+                    )
+                );
+                controller.abort();
+                setIsLoading(false);
+                throw err; // stop retrying
+            },
+        });
 
-            setMessages(prev => [...prev, assistantMessage]);
-        } catch (error) {
-            console.error('Error:', error);
-            // Add error message
-            const errorMessage: Message = {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: 'Sorry, I encountered an error. Please try again.',
-                timestamp: new Date(),
-            };
-            setMessages(prev => [...prev, errorMessage]);
-        } finally {
-            setIsLoading(false);
-        }
+        setIsLoading(false);
     };
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -132,7 +163,15 @@ export default function Twin() {
                                     : 'bg-white border border-gray-200 text-gray-800'
                             }`}
                         >
-                            <p className="whitespace-pre-wrap">{message.content}</p>
+                            {message.role === 'assistant' ? (
+                                <div className="prose prose-sm max-w-none prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900 prose-headings:text-gray-900 prose-a:text-blue-600 prose-code:text-gray-800 prose-pre:bg-gray-100 prose-pre:text-gray-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 overflow-x-auto break-words">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                                        {message.content}
+                                    </ReactMarkdown>
+                                </div>
+                            ) : (
+                                <p className="whitespace-pre-wrap">{message.content}</p>
+                            )}
                             <p
                                 className={`text-xs mt-1 ${
                                     message.role === 'user' ? 'text-slate-300' : 'text-gray-500'

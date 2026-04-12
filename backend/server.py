@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
@@ -158,6 +159,45 @@ def call_bedrock(conversation: List[Dict], user_message: str) -> str:
             raise HTTPException(status_code=500, detail=f"Bedrock error: {str(e)}")
 
 
+def stream_bedrock(conversation: List[Dict], user_message: str):
+    """Stream response from AWS Bedrock using converse_stream API"""
+
+    messages = []
+
+    messages.append({
+        "role": "user",
+        "content": [{"text": f"System: {prompt()}"}]
+    })
+
+    for msg in conversation[-50:]:
+        messages.append({
+            "role": msg["role"],
+            "content": [{"text": msg["content"]}]
+        })
+
+    messages.append({
+        "role": "user",
+        "content": [{"text": user_message}]
+    })
+
+    response = bedrock_client.converse_stream(
+        modelId=BEDROCK_MODEL_ID,
+        messages=messages,
+        inferenceConfig={
+            "maxTokens": 2000,
+            "temperature": 0.7,
+            "topP": 0.9
+        }
+    )
+
+    stream = response.get("stream")
+    if stream:
+        for event in stream:
+            if "contentBlockDelta" in event:
+                text = event["contentBlockDelta"]["delta"]["text"]
+                yield text
+
+
 @app.get("/")
 async def root():
     return {
@@ -210,6 +250,48 @@ async def chat(request: ChatRequest):
         raise
     except Exception as e:
         print(f"Error in chat endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """Streaming chat endpoint using Server-Sent Events"""
+    try:
+        session_id = request.session_id or str(uuid.uuid4())
+        conversation = load_conversation(session_id)
+
+        def event_stream():
+            full_response = []
+
+            # Send session_id as the first event
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
+
+            try:
+                for text_chunk in stream_bedrock(conversation, request.message):
+                    full_response.append(text_chunk)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': text_chunk})}\n\n"
+
+                # Save conversation after streaming completes
+                assistant_response = "".join(full_response)
+                conversation.append(
+                    {"role": "user", "content": request.message, "timestamp": datetime.now().isoformat()}
+                )
+                conversation.append(
+                    {"role": "assistant", "content": assistant_response, "timestamp": datetime.now().isoformat()}
+                )
+                save_conversation(session_id, conversation)
+
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+            except ClientError as e:
+                error_code = e.response['Error']['Code']
+                print(f"Bedrock streaming error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Bedrock error: {error_code}'})}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    except Exception as e:
+        print(f"Error in chat stream endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
