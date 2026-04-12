@@ -7,10 +7,7 @@ FastAPI backend for the AI Digital Twin, deployable to AWS Lambda.
 - AWS CLI configured with named profiles (`patrickcmd` for root/admin, `aiengineer` for IAM user)
 - Docker Desktop (for building the Lambda deployment package)
 - Python 3.12+ with [uv](https://docs.astral.sh/uv/)
-- An OpenAI API key in a `.env` file (in `backend/` or project root):
-  ```
-  OPENAI_API_KEY=sk-...
-  ```
+- AWS Bedrock access enabled in your region
 
 ## Local Development
 
@@ -34,7 +31,7 @@ Creates the IAM group and permissions needed for the project. Run this **once** 
 
 **What it does:**
 - Creates the `TwinAccess` IAM group (idempotent — skips if it already exists)
-- Attaches 6 policies: Lambda, S3, API Gateway, CloudFront, IAM ReadOnly, DynamoDB
+- Attaches 8 policies: Lambda, S3, API Gateway, CloudFront, IAM ReadOnly, DynamoDB, Bedrock, CloudWatch
 - Adds the `aiengineer` IAM user to the group
 
 ```bash
@@ -50,9 +47,10 @@ Creates or updates the Lambda function with your code and configuration.
 **What it does:**
 - Creates the `twin-api-role` IAM execution role (if it doesn't exist)
 - Creates or updates the `twin-api` Lambda function
-- Uploads `lambda-deployment.zip` (direct for <50MB, via temp S3 bucket for larger)
+- Uploads `lambda-deployment.zip` (direct for <20MB, via temp S3 bucket for larger)
 - Configures: Python 3.12, x86_64, 512MB memory, 60s timeout
-- Sets environment variables: `OPENAI_API_KEY`, `CORS_ORIGINS`, `USE_S3`, `S3_BUCKET`
+- Attaches `AmazonBedrockFullAccess` to the execution role
+- Sets environment variables: `DEFAULT_AWS_REGION`, `BEDROCK_MODEL_ID`, `CORS_ORIGINS`, `USE_S3`, `S3_BUCKET`
 
 **Before running**, build the deployment package:
 ```bash
@@ -69,7 +67,7 @@ Then deploy:
 |----------|---------|-------------|
 | `DEFAULT_AWS_REGION` | `us-east-1` | AWS region |
 | `AWS_ACCOUNT_ID` | — | Used in S3 bucket naming |
-| `OPENAI_API_KEY` | loaded from `.env` | OpenAI API key |
+| `BEDROCK_MODEL_ID` | `global.amazon.nova-2-lite-v1:0` | Bedrock model ID |
 | `S3_BUCKET` | `twin-memory-{AWS_ACCOUNT_ID}` | S3 bucket for conversation memory |
 
 ### 3. Test Lambda (`bin/test-lambda.sh`)

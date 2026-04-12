@@ -15,27 +15,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Environment variables for the Lambda function
-# OPENAI_API_KEY is read from the local .env or environment
-OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 S3_BUCKET="${S3_BUCKET:-twin-memory-${AWS_ACCOUNT_ID}}"
-
-if [[ -z "$OPENAI_API_KEY" ]]; then
-  # Try loading from .env files
-  for envfile in "$BACKEND_DIR/.env" "$BACKEND_DIR/../.env"; do
-    if [[ -f "$envfile" ]]; then
-      val=$(grep -E '^OPENAI_API_KEY=' "$envfile" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
-      if [[ -n "$val" ]]; then
-        OPENAI_API_KEY="$val"
-        break
-      fi
-    fi
-  done
-fi
-
-if [[ -z "$OPENAI_API_KEY" ]]; then
-  echo "ERROR: OPENAI_API_KEY not found. Set it in your environment or in a .env file."
-  exit 1
-fi
+BEDROCK_MODEL_ID="${BEDROCK_MODEL_ID:-global.amazon.nova-2-lite-v1:0}"
 
 echo "=== Deploying Lambda Function (profile: $AWS_PROFILE, region: $AWS_REGION) ==="
 
@@ -80,10 +61,21 @@ if [[ -z "$ROLE_ARN" || "$ROLE_ARN" == "None" ]]; then
     --policy-arn "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" \
     --profile "$AWS_PROFILE"
 
+  # Attach Bedrock permissions
+  aws iam attach-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-arn "arn:aws:iam::aws:policy/AmazonBedrockFullAccess" \
+    --profile "$AWS_PROFILE"
+
   echo "Waiting for role to propagate..."
   sleep 10
 else
   echo "Role '$ROLE_NAME' already exists: $ROLE_ARN"
+  # Ensure Bedrock permissions are attached
+  aws iam attach-role-policy \
+    --role-name "$ROLE_NAME" \
+    --policy-arn "arn:aws:iam::aws:policy/AmazonBedrockFullAccess" \
+    --profile "$AWS_PROFILE" 2>/dev/null || true
 fi
 
 # Step 3: Create or update the Lambda function
@@ -111,7 +103,7 @@ if [[ -z "$EXISTING" ]]; then
       --timeout "$TIMEOUT" \
       --memory-size "$MEMORY_SIZE" \
       --code "S3Bucket=$DEPLOY_BUCKET,S3Key=$ZIP_FILE" \
-      --environment "Variables={OPENAI_API_KEY=$OPENAI_API_KEY,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
+      --environment "Variables={DEFAULT_AWS_REGION=$AWS_REGION,BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
       --profile "$AWS_PROFILE" \
       --region "$AWS_REGION"
 
@@ -130,7 +122,7 @@ if [[ -z "$EXISTING" ]]; then
       --timeout "$TIMEOUT" \
       --memory-size "$MEMORY_SIZE" \
       --zip-file "fileb://$BACKEND_DIR/$ZIP_FILE" \
-      --environment "Variables={OPENAI_API_KEY=$OPENAI_API_KEY,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
+      --environment "Variables={DEFAULT_AWS_REGION=$AWS_REGION,BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
       --profile "$AWS_PROFILE" \
       --region "$AWS_REGION"
   fi
@@ -141,7 +133,7 @@ else
 
   # Update function code
   ZIP_SIZE_BYTES=$(stat -f%z "$BACKEND_DIR/$ZIP_FILE" 2>/dev/null || stat -c%s "$BACKEND_DIR/$ZIP_FILE")
-  if (( ZIP_SIZE_BYTES > 50000000 )); then
+  if (( ZIP_SIZE_BYTES > 20000000 )); then
     DEPLOY_BUCKET="twin-deploy-$(date +%s)"
     aws s3 mb "s3://$DEPLOY_BUCKET" --profile "$AWS_PROFILE" --region "$AWS_REGION"
     aws s3 cp "$BACKEND_DIR/$ZIP_FILE" "s3://$DEPLOY_BUCKET/$ZIP_FILE" --profile "$AWS_PROFILE" --region "$AWS_REGION"
@@ -177,7 +169,7 @@ else
     --handler "$HANDLER" \
     --timeout "$TIMEOUT" \
     --memory-size "$MEMORY_SIZE" \
-    --environment "Variables={OPENAI_API_KEY=$OPENAI_API_KEY,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
+    --environment "Variables={DEFAULT_AWS_REGION=$AWS_REGION,BEDROCK_MODEL_ID=$BEDROCK_MODEL_ID,CORS_ORIGINS=*,USE_S3=true,S3_BUCKET=$S3_BUCKET}" \
     --profile "$AWS_PROFILE" \
     --region "$AWS_REGION"
 
@@ -203,7 +195,8 @@ echo "Timeout:  ${TIMEOUT}s"
 echo "Region:   $AWS_REGION"
 echo ""
 echo "Environment variables set:"
-echo "  OPENAI_API_KEY = (hidden)"
-echo "  CORS_ORIGINS   = *"
-echo "  USE_S3         = true"
-echo "  S3_BUCKET      = $S3_BUCKET"
+echo "  DEFAULT_AWS_REGION = $AWS_REGION"
+echo "  BEDROCK_MODEL_ID  = $BEDROCK_MODEL_ID"
+echo "  CORS_ORIGINS       = *"
+echo "  USE_S3             = true"
+echo "  S3_BUCKET          = $S3_BUCKET"

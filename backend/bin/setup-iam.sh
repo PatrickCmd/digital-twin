@@ -12,6 +12,8 @@ POLICIES=(
   "arn:aws:iam::aws:policy/CloudFrontFullAccess"
   "arn:aws:iam::aws:policy/IAMReadOnlyAccess"
   "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess_v2"
+  "arn:aws:iam::aws:policy/AmazonBedrockFullAccess"
+  "arn:aws:iam::aws:policy/CloudWatchFullAccess"
 )
 
 echo "=== Setting up IAM for Digital Twin (profile: $AWS_PROFILE) ==="

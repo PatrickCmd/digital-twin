@@ -1,6 +1,6 @@
 # Digital Twin
 
-An AI-powered digital twin that represents you in conversations. Built with a FastAPI backend (OpenAI GPT-5.4-mini) and a Next.js frontend, deployed to AWS using Lambda, API Gateway, S3, and CloudFront.
+An AI-powered digital twin that represents you in conversations. Built with a FastAPI backend (AWS Bedrock) and a Next.js frontend, deployed to AWS using Lambda, API Gateway, S3, and CloudFront.
 
 **Live:** https://d2iaic6tzui2jf.cloudfront.net
 
@@ -10,7 +10,7 @@ An AI-powered digital twin that represents you in conversations. Built with a Fa
 Browser → CloudFront (HTTPS) → S3 (static frontend)
                                     ↓ API calls
                               API Gateway → Lambda (FastAPI)
-                                              ├── OpenAI API
+                                              ├── AWS Bedrock (AI responses)
                                               └── S3 (conversation memory)
 ```
 
@@ -20,7 +20,7 @@ Browser → CloudFront (HTTPS) → S3 (static frontend)
 - Node.js 18+
 - AWS CLI configured with profiles `patrickcmd` (admin) and `aiengineer` (IAM user)
 - Docker Desktop (for Lambda packaging)
-- OpenAI API key
+- AWS Bedrock access enabled in your region
 
 ## Local Development
 
