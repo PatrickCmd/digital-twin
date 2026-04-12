@@ -41,7 +41,7 @@ npm run dev
 
 Open http://localhost:3000
 
-## AWS Deployment
+## AWS Deployment (Shell Scripts)
 
 All deployment scripts are in `backend/bin/`. Run from the `backend/` directory. See [backend/README.md](backend/README.md) for detailed documentation on each script.
 
@@ -70,6 +70,34 @@ uv run deploy.py
 ./bin/setup-cloudfront.sh
 ```
 
+## Terraform Deployment (Recommended)
+
+Infrastructure as Code using Terraform with workspace-based environments. See [terraform/README.md](terraform/README.md) for full details.
+
+```bash
+# Deploy
+./scripts/deploy.sh           # dev (default)
+./scripts/deploy.sh prod      # prod (uses prod.tfvars, custom domain)
+
+# Invalidate CloudFront cache
+./scripts/invalidate-cloudfront.sh dev
+
+# Destroy
+./scripts/destroy.sh dev
+```
+
+Environments and custom domains:
+
+| Environment | Domain |
+|-------------|--------|
+| `prod` | `digital-twin.patrickcmd.dev` |
+| `test` | `test-digital-twin.patrickcmd.dev` |
+| `dev` | `dev-digital-twin.patrickcmd.dev` (optional) |
+
+## Shell Script Deployment
+
+Manual step-by-step deployment using bash scripts. See [backend/README.md](backend/README.md) for detailed documentation on each script.
+
 ## Updating
 
 ```bash
@@ -91,8 +119,10 @@ Removes all AWS resources (CloudFront, API Gateway, Lambda, S3, IAM). Requires c
 ## Project Structure
 
 ```
-backend/       FastAPI app, Lambda handler, deployment scripts
+backend/       FastAPI app, Lambda handler, shell deployment scripts
 frontend/      Next.js app (static export)
+terraform/     Infrastructure as Code (modules, workspaces, environments)
+scripts/       Terraform deploy, destroy, and invalidation scripts
 docs/          Course materials
 memory/        Local conversation storage (dev only)
 ```
