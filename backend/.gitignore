@@ -44,3 +44,7 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Lambda packages
+lambda-deployment.zip
+lambda-package/
