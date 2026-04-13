@@ -295,6 +295,26 @@ Two workflows in `.github/workflows/`:
 - **Manual trigger only** — requires environment selection and confirmation (type environment name)
 - Steps: verify confirmation, checkout, OIDC auth, setup Terraform, run `destroy.sh`
 
+### Clean Up CI/CD Resources
+
+Removes all GitHub Actions CI/CD infrastructure (IAM role, state bucket, lock table, optionally OIDC provider and GitHub secrets). Only run this if you are completely done with the project.
+
+```bash
+./scripts/cleanup-github-actions.sh
+```
+
+The script is interactive and requires confirmation at each destructive step:
+
+| Step | Resource | Cost if kept |
+|------|----------|-------------|
+| 1 | IAM Role `github-actions-twin-deploy` + all policies | Free |
+| 2 | S3 Bucket `twin-terraform-state-<account_id>` (all versions) | ~$0.02/month |
+| 3 | DynamoDB Table `twin-terraform-locks` | ~$0.00/month (PAY_PER_REQUEST) |
+| 4 | OIDC Provider (optional — skip if other roles use it) | Free |
+| 5 | GitHub Secrets (optional — requires `gh` CLI) | Free |
+
+**Recommendation**: Leave these resources in place. Total cost is under $0.05/month, and they allow easy redeployment later.
+
 ## Teardown
 
 ```bash
