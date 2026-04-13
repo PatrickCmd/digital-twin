@@ -9,12 +9,18 @@ terraform {
   }
 }
 
+variable "aws_profile" {
+  description = "AWS CLI profile for local development (leave empty for CI/CD with OIDC)"
+  type        = string
+  default     = ""
+}
+
 provider "aws" {
-  profile = "aiengineer"
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 provider "aws" {
   alias   = "us_east_1"
-  profile = "aiengineer"
+  profile = var.aws_profile != "" ? var.aws_profile : null
   region  = "us-east-1"
 }
