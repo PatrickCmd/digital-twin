@@ -2,7 +2,7 @@
 
 An AI-powered digital twin that represents you in conversations. Built with a FastAPI backend (AWS Bedrock) and a Next.js frontend, deployed to AWS using Lambda, API Gateway, S3, and CloudFront.
 
-**Live:** https://d2iaic6tzui2jf.cloudfront.net
+**Live:** https://digital-twin.patrickcmd.dev/
 
 ## Architecture
 
