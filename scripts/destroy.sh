@@ -72,11 +72,17 @@ if [ ! -f "../backend/lambda-deployment.zip" ]; then
     echo "dummy" | zip ../backend/lambda-deployment.zip -
 fi
 
+# In CI (GitHub Actions), override aws_profile to empty so OIDC env credentials are used
+CI_VARS=()
+if [ "${CI:-false}" = "true" ]; then
+    CI_VARS+=(-var="aws_profile=")
+fi
+
 # Use environment-specific .tfvars if it exists
 if [ -f "${ENVIRONMENT}.tfvars" ]; then
-    terraform destroy -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve
+    terraform destroy -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve
 else
-    terraform destroy -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve
+    terraform destroy -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve
 fi
 
 echo ""

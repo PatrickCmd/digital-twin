@@ -37,12 +37,18 @@ else
   terraform workspace select "$ENVIRONMENT"
 fi
 
+# In CI (GitHub Actions), override aws_profile to empty so OIDC env credentials are used
+CI_VARS=()
+if [ "${CI:-false}" = "true" ]; then
+  CI_VARS+=(-var="aws_profile=")
+fi
+
 # Use environment-specific .tfvars if it exists (e.g., prod.tfvars, dev.tfvars, test.tfvars)
 if [ -f "${ENVIRONMENT}.tfvars" ]; then
   echo "Using ${ENVIRONMENT}.tfvars..."
-  TF_APPLY_CMD=(terraform apply -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve)
+  TF_APPLY_CMD=(terraform apply -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
 else
-  TF_APPLY_CMD=(terraform apply -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" -auto-approve)
+  TF_APPLY_CMD=(terraform apply -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
 fi
 
 echo "Applying Terraform..."
