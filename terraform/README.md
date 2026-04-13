@@ -192,6 +192,109 @@ terraform workspace select dev        # switch to dev
 terraform workspace select prod       # switch to prod
 ```
 
+## CI/CD with GitHub Actions
+
+### How Remote State Works
+
+By default, Terraform stores state **locally** in a `terraform.tfstate` file. This causes issues when multiple people or CI/CD pipelines run Terraform simultaneously (state corruption), when the state file lives on one machine (single point of failure), or when CI/CD runners are ephemeral (no persistent local state).
+
+The solution is remote state in S3 with DynamoDB locking:
+
+```
+Developer A ─┐
+              ├──→ S3 Bucket (terraform.tfstate) ──→ AWS Resources
+Developer B ─┤         ↕
+              │    DynamoDB (lock table)
+CI/CD ───────┘
+```
+
+- **S3 Bucket** stores the state file remotely. Versioning keeps history for recovery, encryption (AES256) protects sensitive values, and public access is blocked.
+- **DynamoDB Table** provides state locking. Before modifying state, Terraform writes a lock entry (keyed by `LockID`). If another process tries to run concurrently, it sees the lock and fails instead of corrupting state. The lock is released when Terraform finishes.
+
+Once the resources exist, Terraform connects via a `backend` block. The `key` path is per-environment (`dev/`, `test/`, `prod/`), so each environment gets its own isolated state file within the same bucket.
+
+The flow: `terraform init` connects to S3 and downloads current state. `terraform plan/apply` acquires a DynamoDB lock, reads state from S3, computes changes, writes updated state back, and releases the lock.
+
+These resources are **infrastructure that manages infrastructure** — they must exist before Terraform can use them as a backend. That's why `backend-setup.tf` is a one-time bootstrap step that runs with local state, then gets backed up.
+
+### State Management Resources
+
+Remote state is stored in S3 with DynamoDB locking to enable CI/CD and team collaboration.
+
+| Resource | Name | Purpose |
+|----------|------|---------|
+| **S3 Bucket** | `twin-terraform-state-<account_id>` | Versioned, encrypted (AES256) Terraform state storage |
+| **DynamoDB Table** | `twin-terraform-locks` | State locking to prevent concurrent modifications |
+
+#### Setup
+
+Run the one-time setup script to create these resources:
+
+```bash
+./scripts/setup-backend.sh
+```
+
+The script applies targeted resources, verifies outputs, and backs up `backend-setup.tf` to `backend-setup.tf.backup`.
+
+### GitHub Actions OIDC Authentication
+
+GitHub Actions authenticates with AWS using OpenID Connect (OIDC) — no long-lived access keys needed. The flow:
+
+```
+GitHub Actions → requests OIDC JWT → AWS STS validates token → assumes IAM role → temporary credentials
+```
+
+| Resource | Name | Purpose |
+|----------|------|---------|
+| **OIDC Provider** | `token.actions.githubusercontent.com` | Trust relationship between GitHub and AWS |
+| **IAM Role** | `github-actions-twin-deploy` | Role assumed by GitHub Actions workflows |
+| **Managed Policies** | 9 AWS policies | Lambda, S3, API Gateway, CloudFront, IAM Read, Bedrock, DynamoDB, ACM, Route53 |
+| **Inline Policy** | `github-actions-additional` | IAM write permissions for Terraform to manage roles |
+
+#### Setup
+
+Run the one-time setup script (defaults to `PatrickCmd/digital-twin`):
+
+```bash
+./scripts/setup-github-oidc.sh
+# or with a custom repo:
+./scripts/setup-github-oidc.sh owner/repo-name
+```
+
+The script auto-detects whether the OIDC provider already exists in your account and imports it if so. After apply, it backs up `github-oidc.tf` to `github-oidc.tf.backup` and prints the Role ARN needed for GitHub Secrets.
+
+#### GitHub Repository Secrets
+
+After running the OIDC script, set secrets automatically using the `gh` CLI:
+
+```bash
+./scripts/setup-github-secrets.sh            # defaults to us-east-1
+./scripts/setup-github-secrets.sh us-west-2  # custom region
+```
+
+The script auto-detects `AWS_ACCOUNT_ID` and `AWS_ROLE_ARN` from your AWS account, sets all 3 secrets, and verifies with `gh secret list`. Requires `gh` CLI installed and authenticated (`gh auth login`).
+
+| Secret | Value | Source |
+|--------|-------|--------|
+| `AWS_ROLE_ARN` | `arn:aws:iam::<account_id>:role/github-actions-twin-deploy` | Auto-detected |
+| `DEFAULT_AWS_REGION` | `us-east-1` | Script argument (default) |
+| `AWS_ACCOUNT_ID` | Your 12-digit AWS account ID | Auto-detected |
+
+### GitHub Actions Workflows
+
+Two workflows in `.github/workflows/`:
+
+#### Deploy (`deploy.yml`)
+
+- **Auto-triggers** on push to `main` or `day5-digital-twin-aws-terraform-cicd` branches (deploys to dev)
+- **Manual trigger** via GitHub Actions UI with environment choice (dev/test/prod)
+- Steps: checkout, OIDC auth, setup Python + uv + Terraform + Node.js, run `deploy.sh`, get outputs, invalidate CloudFront
+
+#### Destroy (`destroy.yml`)
+
+- **Manual trigger only** — requires environment selection and confirmation (type environment name)
+- Steps: verify confirmation, checkout, OIDC auth, setup Terraform, run `destroy.sh`
+
 ## Teardown
 
 ```bash

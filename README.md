@@ -94,6 +94,37 @@ Environments and custom domains:
 | `test` | `test-digital-twin.patrickcmd.dev` |
 | `dev` | `dev-digital-twin.patrickcmd.dev` (optional) |
 
+## CI/CD with GitHub Actions
+
+Automated deployment and teardown via GitHub Actions using OIDC authentication (no long-lived AWS keys).
+
+**Workflows:**
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| **Deploy** | Push to `main`, manual | Builds Lambda + frontend, applies Terraform, invalidates CloudFront |
+| **Destroy** | Manual only | Empties S3 buckets and destroys all resources (requires confirmation) |
+
+**One-time setup:**
+
+```bash
+# 1. Create S3 bucket + DynamoDB table for remote Terraform state
+./scripts/setup-backend.sh
+
+# 2. Create GitHub OIDC provider + IAM role in AWS
+./scripts/setup-github-oidc.sh
+
+# 3. Set GitHub repository secrets (AWS_ROLE_ARN, DEFAULT_AWS_REGION, AWS_ACCOUNT_ID)
+./scripts/setup-github-secrets.sh
+```
+
+**Manual deploy via GitHub Actions UI:**
+1. Go to Actions > Deploy Digital Twin
+2. Click "Run workflow"
+3. Select environment (dev/test/prod)
+
+See [terraform/README.md](terraform/README.md) for full CI/CD documentation including remote state, OIDC auth, and workflow details.
+
 ## Shell Script Deployment
 
 Manual step-by-step deployment using bash scripts. See [backend/README.md](backend/README.md) for detailed documentation on each script.
