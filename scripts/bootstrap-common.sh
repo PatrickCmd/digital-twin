@@ -43,6 +43,7 @@ terraform {
 }
 TF
     trap bootstrap_end EXIT
+    adopt_legacy_local_state
     echo "Initializing Terraform (local bootstrap state: terraform/bootstrap.tfstate)..."
     terraform init -input=false -reconfigure >/dev/null
     terraform workspace select default >/dev/null 2>&1 || true
@@ -50,6 +51,31 @@ TF
 
 bootstrap_end() {
     rm -f "${OVERRIDE_FILE}"
+}
+
+# The original bootstrap runs used Terraform's default local state
+# (terraform/terraform.tfstate). If it is still there, Terraform would stop
+# and ask to migrate it. Adopt it as bootstrap.tfstate instead (it holds the
+# OIDC provider, roles and state bucket), keeping a copy, and move any local
+# workspace directory aside so nothing is left for Terraform to migrate.
+adopt_legacy_local_state() {
+    local stamp
+    stamp=$(date +%Y%m%d%H%M%S)
+    if [ -s terraform.tfstate ]; then
+        if [ ! -s bootstrap.tfstate ]; then
+            echo "Adopting existing local state terraform.tfstate as bootstrap.tfstate"
+            cp terraform.tfstate "terraform.tfstate.pre-bootstrap-${stamp}"
+            mv terraform.tfstate bootstrap.tfstate
+        else
+            echo "Moving stale terraform.tfstate aside (bootstrap.tfstate already exists)"
+            mv terraform.tfstate "terraform.tfstate.pre-bootstrap-${stamp}"
+        fi
+        echo "  (copy kept as terraform.tfstate.pre-bootstrap-${stamp}; gitignored)"
+    fi
+    if [ -d terraform.tfstate.d ]; then
+        echo "Moving local workspace states terraform.tfstate.d aside"
+        mv terraform.tfstate.d "terraform.tfstate.d.pre-bootstrap-${stamp}"
+    fi
 }
 
 # import_if_missing <resource address> <import id> [extra -var args...]

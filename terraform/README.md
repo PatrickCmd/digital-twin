@@ -227,6 +227,8 @@ These resources are **infrastructure that manages infrastructure** — they must
   `backend.tf` with a **local** backend, so the scripts never need the bucket/key/region
   that `deploy.sh` passes, and keeps their state in `terraform/bootstrap.tfstate`
   (gitignored) with plugins in `terraform/.terraform-bootstrap/`;
+- adopts a leftover `terraform/terraform.tfstate` from the original bootstrap runs as
+  `bootstrap.tfstate` (keeping a timestamped copy), so Terraform never asks to migrate it;
 - imports resources that already exist in AWS (bucket, lock table, OIDC provider, roles,
   policy attachments) before applying, so re-running a script updates in place instead of
   failing with "already exists".
