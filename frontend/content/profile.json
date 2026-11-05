@@ -1,0 +1,60 @@
+{
+  "full_name": "Patrick Walukagga",
+  "name": "Patrick",
+  "headline": "Backend and AI engineer who takes LLM systems from prototype to production on AWS.",
+  "title": "Backend / AI Software Engineer",
+  "location": "Kampala, Uganda",
+  "timezone": "East Africa Time (UTC+3)",
+  "email": "p.walukagga@gmail.com",
+  "links": {
+    "github": "https://github.com/PatrickCmd",
+    "linkedin": "https://www.linkedin.com/in/patrick-walukagga-53261382/",
+    "website": "https://patrickcmd.dev",
+    "resume_pdf": null
+  },
+  "specialties": [
+    "AI / LLM engineering",
+    "Backend and API design (Python, Django, FastAPI)",
+    "Cloud infrastructure and automation (AWS, Terraform)",
+    "Production inference and MLOps",
+    "DevOps and CI/CD"
+  ],
+  "career_start": "2017-11",
+  "certifications": [
+    "AWS Solutions Architect - Associate",
+    "AWS Cloud Practitioner",
+    "PCEP - Certified Python Programmer"
+  ],
+  "recruiter_facts": {
+    "role_targets": [
+      "Backend / AI Engineer",
+      "AI Platform / LLM Engineer",
+      "Cloud / Platform Engineer"
+    ],
+    "stack": [
+      "Python",
+      "Django",
+      "FastAPI",
+      "PostgreSQL",
+      "Docker",
+      "Kubernetes",
+      "AWS",
+      "Terraform",
+      "LLM APIs and inference platforms"
+    ],
+    "remote_preference": null,
+    "work_authorization": null,
+    "notice_period": null,
+    "availability": null,
+    "_todo": "Fill remote_preference, work_authorization, notice_period and availability. Null fields are hidden in the UI and the twin defers to direct contact for them."
+  },
+  "suggested_questions": [
+    "What kind of work are you looking for?",
+    "Walk me through your experience with LLMs in production.",
+    "Which companies have you worked for?",
+    "What is your backend stack of choice and why?",
+    "How do you approach deploying AI services on AWS?",
+    "How can I get in touch with you directly?"
+  ],
+  "knowledge_updated": "2026-04-11"
+}

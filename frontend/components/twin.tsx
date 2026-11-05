@@ -7,6 +7,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { profile } from '@/content/profile';
+import { createId, now } from '@/lib/ids';
 
 interface Message {
     id: string;
@@ -31,22 +33,22 @@ export default function Twin() {
         scrollToBottom();
     }, [messages]);
 
-    const sendMessage = async () => {
-        if (!input.trim() || isLoading) return;
+    const sendMessage = async (text?: string) => {
+        const messageText = (text ?? input).trim();
+        if (!messageText || isLoading) return;
 
         const userMessage: Message = {
-            id: Date.now().toString(),
+            id: createId(),
             role: 'user',
-            content: input,
-            timestamp: new Date(),
+            content: messageText,
+            timestamp: now(),
         };
 
         setMessages(prev => [...prev, userMessage]);
-        const messageText = input;
         setInput('');
         setIsLoading(true);
 
-        const assistantMessageId = (Date.now() + 1).toString();
+        const assistantMessageId = createId();
         let buffer = '';
 
         // Add empty assistant message that will be filled by streaming
@@ -54,7 +56,7 @@ export default function Twin() {
             id: assistantMessageId,
             role: 'assistant',
             content: '',
-            timestamp: new Date(),
+            timestamp: now(),
         }]);
 
         const controller = new AbortController();
@@ -133,7 +135,7 @@ export default function Twin() {
                     <Bot className="w-6 h-6" />
                     AI Digital Twin
                 </h2>
-                <p className="text-sm text-slate-300 mt-1">Patrick Walukagga&apos;s AI Digital Twin</p>
+                <p className="text-sm text-slate-300 mt-1">{profile.full_name}&apos;s AI Digital Twin</p>
             </div>
 
             {/* Messages */}
@@ -147,8 +149,21 @@ export default function Twin() {
                             height={80}
                             className="w-20 h-20 rounded-full mx-auto mb-3 border-2 border-gray-300"
                         />
-                        <p>Hello! I&apos;m Patrick Walukagga&apos;s Digital Twin.</p>
-                        <p className="text-sm mt-2">Ask me anything about Patrick Walukagga!</p>
+                        <p>Hello! I&apos;m {profile.full_name}&apos;s Digital Twin.</p>
+                        <p className="text-sm mt-2">Ask me anything about {profile.name}, or start with one of these:</p>
+                        <ul className="flex flex-wrap justify-center gap-2 mt-4 px-2" aria-label="Suggested questions">
+                            {profile.suggested_questions.map((q) => (
+                                <li key={q}>
+                                    <button
+                                        type="button"
+                                        onClick={() => sendMessage(q)}
+                                        className="px-3 py-1.5 text-sm rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
+                                    >
+                                        {q}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 )}
 
@@ -245,7 +260,7 @@ export default function Twin() {
                         autoFocus
                     />
                     <button
-                        onClick={sendMessage}
+                        onClick={() => sendMessage()}
                         disabled={!input.trim() || isLoading}
                         className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >

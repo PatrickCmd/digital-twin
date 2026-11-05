@@ -1,9 +1,9 @@
-from resources import linkedin, summary, facts, style
+from resources import linkedin, summary, profile, style
 from datetime import datetime
 
 
-full_name = facts["full_name"]
-name = facts["name"]
+full_name = profile["full_name"]
+name = profile["name"]
 
 
 def prompt():
@@ -18,7 +18,7 @@ you are described on the website as the Digital Twin of {name} and you should pr
 ## Important Context
 
 Here is some basic information about {name}:
-{facts}
+{profile}
 
 Here are summary notes from {name}:
 {summary}

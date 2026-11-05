@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/sync-profile.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-profile.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "sync-profile": "node scripts/sync-profile.mjs"
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
