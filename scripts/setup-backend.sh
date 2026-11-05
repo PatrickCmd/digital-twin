@@ -1,18 +1,14 @@
 #!/bin/bash
+# One-time: create the S3 bucket + DynamoDB table that hold Terraform state.
+# Safe to re-run: existing resources are imported into the local bootstrap state.
+# Uses the admin AWS profile (default: patrickcmd; override with AWS_PROFILE=<name>).
 set -e
-
-# AWS CLI profile for this one-time setup (admin). Override with AWS_PROFILE=<name>.
-AWS_PROFILE_NAME="${AWS_PROFILE:-patrickcmd}"
-echo "Using AWS profile: ${AWS_PROFILE_NAME}"
+source "$(dirname "$0")/bootstrap-common.sh"
 
 echo "🔧 Setting up Terraform state management resources..."
+bootstrap_begin
 
-# Navigate to terraform directory
-cd "$(dirname "$0")/../terraform"
-
-# Ensure backend-setup.tf exists
 if [ ! -f "backend-setup.tf" ]; then
-    # Check for backup
     if [ -f "backend-setup.tf.backup" ]; then
         echo "📦 Restoring backend-setup.tf from backup..."
         cp backend-setup.tf.backup backend-setup.tf
@@ -21,36 +17,36 @@ if [ ! -f "backend-setup.tf" ]; then
         exit 1
     fi
 fi
+# Re-init so the restored file is part of the configuration.
+terraform init -input=false -reconfigure >/dev/null
 
-# Make sure we're in the default workspace
-echo "📂 Selecting default workspace..."
-terraform workspace select default 2>/dev/null || true
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+STATE_BUCKET="twin-terraform-state-${AWS_ACCOUNT_ID}"
 
-# Initialize Terraform
-echo "🔄 Initializing Terraform..."
-terraform init -input=false
-export TF_VAR_aws_profile="${AWS_PROFILE_NAME}"
+echo "🔎 Importing existing resources (if any)..."
+import_if_missing aws_s3_bucket.terraform_state "${STATE_BUCKET}"
+import_if_missing aws_s3_bucket_versioning.terraform_state "${STATE_BUCKET}"
+import_if_missing aws_s3_bucket_server_side_encryption_configuration.terraform_state "${STATE_BUCKET}"
+import_if_missing aws_s3_bucket_public_access_block.terraform_state "${STATE_BUCKET}"
+import_if_missing aws_dynamodb_table.terraform_locks "twin-terraform-locks"
 
-# Apply just the backend resources (targeted apply)
 echo "🚀 Applying state management resources..."
-terraform apply \
+terraform apply "${TF_VARS[@]}" \
   -target=aws_s3_bucket.terraform_state \
   -target=aws_s3_bucket_versioning.terraform_state \
   -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state \
   -target=aws_s3_bucket_public_access_block.terraform_state \
   -target=aws_dynamodb_table.terraform_locks
 
-# Verify the resources were created
 echo ""
 echo "📋 Verifying outputs..."
 echo "State bucket: $(terraform output -raw state_bucket_name)"
 echo "DynamoDB table: $(terraform output -raw dynamodb_table_name)"
 
-# Backup the setup file instead of removing it
 echo ""
 echo "📦 Backing up backend-setup.tf to backend-setup.tf.backup..."
 mv backend-setup.tf backend-setup.tf.backup
 
 echo ""
-echo "✅ State management resources created successfully!"
-echo "💡 The backend-setup.tf has been backed up to backend-setup.tf.backup"
+echo "✅ State management resources ready."
+echo "💡 Bootstrap state is in terraform/bootstrap.tfstate (gitignored); keep it with your other local secrets."

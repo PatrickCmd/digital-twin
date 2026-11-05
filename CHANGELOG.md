@@ -84,6 +84,14 @@ Implements the plan in `docs/improvement-plan.md`. One commit per item.
   `setup-github-secrets.sh`) use the `patrickcmd` AWS profile (override with
   `AWS_PROFILE`) for `aws` calls and pass it to Terraform via `TF_VAR_aws_profile`.
 
+### 9. Fix: bootstrap scripts failed on the S3 backend block
+- `setup-backend.sh` and `setup-github-oidc.sh` ran a bare `terraform init`, which
+  now fails because `backend.tf` declares an S3 backend without bucket/key/region. They
+  now share `scripts/bootstrap-common.sh`: a temporary `backend_override.tf` switches
+  to a local backend (`terraform/bootstrap.tfstate`, gitignored), the admin profile and
+  `us-east-1` are defaults, and existing AWS resources are imported before `apply` so
+  the scripts are safe to re-run.
+
 ### Not done / needs a decision from Patrick
 - **Re-run the OIDC setup.** `./scripts/setup-github-oidc.sh` then
   `./scripts/setup-github-secrets.sh` to create the plan role and tighten the deploy

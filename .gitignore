@@ -40,3 +40,7 @@ Thumbs.db
 
 # AWS
 .aws/
+
+# Terraform bootstrap (scripts/bootstrap-common.sh)
+terraform/backend_override.tf
+terraform/.terraform-bootstrap/
