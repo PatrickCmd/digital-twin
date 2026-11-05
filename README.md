@@ -66,8 +66,16 @@ before `npm run dev` and `npm run build`). Edit the source file only.
 | `suggested_questions` | Chips in the empty chat state |
 | `knowledge_updated` | "What this twin knows" line and sitemap |
 
-The rest of the knowledge base is `backend/data/me/summary.md`, `backend/data/me/linkedin.pdf`
+The rest of the knowledge base is `backend/data/me/summary.md`, `backend/data/me/linkedin.md`
 and `backend/data/style.txt`, all concatenated into the system prompt in `backend/context.py`.
+`linkedin.md` is generated from `linkedin.pdf`; after replacing the PDF run:
+
+```bash
+cd backend && uv run build_knowledge.py
+```
+
+`deploy.py` runs this automatically, and the Lambda package ships the markdown only, so
+the PDF toolchain (pymupdf4llm, ~190 MB) never runs on Lambda.
 
 ## Environment variables
 

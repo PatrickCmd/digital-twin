@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# AWS CLI profile for this one-time setup (admin). Override with AWS_PROFILE=<name>.
+AWS_PROFILE_NAME="${AWS_PROFILE:-patrickcmd}"
+echo "Using AWS profile: ${AWS_PROFILE_NAME}"
+
 GITHUB_REPO=${1:-"PatrickCmd/digital-twin"}
 
 echo "Setting up GitHub Actions OIDC for repo: ${GITHUB_REPO}"
@@ -26,11 +30,12 @@ terraform workspace select default 2>/dev/null || true
 # Initialize Terraform
 echo "Initializing Terraform..."
 terraform init -input=false
+export TF_VAR_aws_profile="${AWS_PROFILE_NAME}"
 
 # Check if the OIDC provider already exists in the AWS account
 echo "Checking if GitHub OIDC provider already exists..."
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-OIDC_EXISTS=$(aws iam list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, 'oidc-provider/token.actions.githubusercontent.com')]" --output text)
+AWS_ACCOUNT_ID=$(aws sts --profile "${AWS_PROFILE_NAME}" get-caller-identity --query Account --output text)
+OIDC_EXISTS=$(aws iam --profile "${AWS_PROFILE_NAME}" list-open-id-connect-providers --query "OpenIDConnectProviderList[?ends_with(Arn, 'oidc-provider/token.actions.githubusercontent.com')]" --output text)
 
 if [ -n "$OIDC_EXISTS" ]; then
     echo "GitHub OIDC provider already exists in your account."

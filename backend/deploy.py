@@ -1,5 +1,6 @@
 import glob
 import os
+import sys
 import shutil
 import zipfile
 import subprocess
@@ -7,6 +8,10 @@ import subprocess
 
 def main():
     print("Creating Lambda deployment package...")
+
+    # Pre-convert the LinkedIn PDF so the Lambda does not need pymupdf4llm.
+    print("Building knowledge base (PDF -> markdown)...")
+    subprocess.run([sys.executable, "build_knowledge.py"], check=True)
 
     # Clean up
     if os.path.exists("lambda-package"):
@@ -44,13 +49,17 @@ def main():
     # Copy application files
     print("Copying application files...")
     for file in sorted(glob.glob("*.py")):
-        if file in ("deploy.py", "eval_twin.py"):
+        if file in ("deploy.py", "eval_twin.py", "build_knowledge.py"):
             continue
         shutil.copy2(file, "lambda-package/")
     
     # Copy data directory
     if os.path.exists("data"):
-        shutil.copytree("data", "lambda-package/data")
+        shutil.copytree(
+            "data",
+            "lambda-package/data",
+            ignore=shutil.ignore_patterns("*.pdf", "__pycache__", ".DS_Store"),
+        )
 
     # Create zip
     print("Creating zip file...")
