@@ -217,6 +217,25 @@ The flow: `terraform init` connects to S3 and downloads current state. `terrafor
 
 These resources are **infrastructure that manages infrastructure** — they must exist before Terraform can use them as a backend. That's why `backend-setup.tf` is a one-time bootstrap step that runs with local state, then gets backed up.
 
+#### How the bootstrap scripts run Terraform
+
+`scripts/setup-backend.sh` and `scripts/setup-github-oidc.sh` share `scripts/bootstrap-common.sh`, which:
+
+- uses the admin AWS profile (`patrickcmd` by default, `AWS_PROFILE=<name>` to override) and
+  defaults the region to `us-east-1` (`DEFAULT_AWS_REGION` to override);
+- writes a temporary `terraform/backend_override.tf` that replaces the S3 backend from
+  `backend.tf` with a **local** backend, so the scripts never need the bucket/key/region
+  that `deploy.sh` passes, and keeps their state in `terraform/bootstrap.tfstate`
+  (gitignored) with plugins in `terraform/.terraform-bootstrap/`;
+- adopts a leftover `terraform/terraform.tfstate` from the original bootstrap runs as
+  `bootstrap.tfstate` (keeping a timestamped copy), so Terraform never asks to migrate it;
+- imports resources that already exist in AWS (bucket, lock table, OIDC provider, roles,
+  policy attachments) before applying, so re-running a script updates in place instead of
+  failing with "already exists".
+
+Nothing has to be exported before running them. Keep `terraform/bootstrap.tfstate` with
+your other local secrets; if it is lost the scripts simply re-import on the next run.
+
 ### State Management Resources
 
 Remote state is stored in S3 with DynamoDB locking to enable CI/CD and team collaboration.
@@ -267,7 +286,7 @@ Run the one-time setup script (defaults to `PatrickCmd/digital-twin`):
 ./scripts/setup-github-oidc.sh owner/repo-name
 ```
 
-The script auto-detects whether the OIDC provider already exists in your account and imports it if so. After apply, it backs up `github-oidc.tf` to `github-oidc.tf.backup` and prints the Role ARN needed for GitHub Secrets.
+The script imports the OIDC provider, both roles and their policies if they already exist, applies any changes (for example the tightened trust policy), backs up `github-oidc.tf` to `github-oidc.tf.backup` and prints both Role ARNs needed for GitHub Secrets.
 
 #### GitHub Repository Secrets
 
