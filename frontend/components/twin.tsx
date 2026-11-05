@@ -151,6 +151,9 @@ export default function Twin() {
                         />
                         <p>Hello! I&apos;m {profile.full_name}&apos;s Digital Twin.</p>
                         <p className="text-sm mt-2">Ask me anything about {profile.name}, or start with one of these:</p>
+                        <p className="text-xs mt-2 text-gray-400">
+                            What this twin knows: {profile.name}&apos;s resume/LinkedIn and project notes, last updated {profile.knowledge_updated}.
+                        </p>
                         <ul className="flex flex-wrap justify-center gap-2 mt-4 px-2" aria-label="Suggested questions">
                             {profile.suggested_questions.map((q) => (
                                 <li key={q}>

@@ -104,42 +104,38 @@ def save_conversation(session_id: str, messages: List[Dict]):
             json.dump(messages, f, indent=2)
 
 
+# How much history the model sees. Bedrock requires strictly alternating roles,
+# so this is kept even so that the slice starts on a user turn.
+HISTORY_WINDOW = 50
+
+INFERENCE_CONFIG = {
+    "maxTokens": 1200,
+    "temperature": 0.4,
+    "topP": 0.9,
+}
+
+
+def build_messages(conversation: List[Dict], user_message: str) -> List[Dict]:
+    """Conversation history plus the new user turn, in Converse API format."""
+    messages = []
+    for msg in conversation[-HISTORY_WINDOW:]:
+        messages.append({"role": msg["role"], "content": [{"text": msg["content"]}]})
+    messages.append({"role": "user", "content": [{"text": user_message}]})
+    return messages
+
+
 def call_bedrock(conversation: List[Dict], user_message: str) -> str:
     """Call AWS Bedrock with conversation history"""
     
-    # Build messages in Bedrock format
-    messages = []
-    
-    # Add system prompt as first user message
-    # Or there's a better way to do this - pass in system=[{"text": prompt()}] to the converse call below
-    messages.append({
-        "role": "user", 
-        "content": [{"text": f"System: {prompt()}"}]
-    })
-    
-    # Add conversation history (limit to last 25 exchanges)
-    for msg in conversation[-50:]:
-        messages.append({
-            "role": msg["role"],
-            "content": [{"text": msg["content"]}]
-        })
-    
-    # Add current user message
-    messages.append({
-        "role": "user",
-        "content": [{"text": user_message}]
-    })
-    
+    messages = build_messages(conversation, user_message)
+
     try:
         # Call Bedrock using the converse API
         response = bedrock_client.converse(
             modelId=BEDROCK_MODEL_ID,
+            system=[{"text": prompt()}],
             messages=messages,
-            inferenceConfig={
-                "maxTokens": 2000,
-                "temperature": 0.7,
-                "topP": 0.9
-            }
+            inferenceConfig=INFERENCE_CONFIG,
         )
         
         # Extract the response text
@@ -162,32 +158,13 @@ def call_bedrock(conversation: List[Dict], user_message: str) -> str:
 def stream_bedrock(conversation: List[Dict], user_message: str):
     """Stream response from AWS Bedrock using converse_stream API"""
 
-    messages = []
-
-    messages.append({
-        "role": "user",
-        "content": [{"text": f"System: {prompt()}"}]
-    })
-
-    for msg in conversation[-50:]:
-        messages.append({
-            "role": msg["role"],
-            "content": [{"text": msg["content"]}]
-        })
-
-    messages.append({
-        "role": "user",
-        "content": [{"text": user_message}]
-    })
+    messages = build_messages(conversation, user_message)
 
     response = bedrock_client.converse_stream(
         modelId=BEDROCK_MODEL_ID,
+        system=[{"text": prompt()}],
         messages=messages,
-        inferenceConfig={
-            "maxTokens": 2000,
-            "temperature": 0.7,
-            "topP": 0.9
-        }
+        inferenceConfig=INFERENCE_CONFIG,
     )
 
     stream = response.get("stream")
