@@ -52,6 +52,9 @@ if [ -n "$OIDC_EXISTS" ]; then
         -target=aws_iam_role_policy_attachment.github_acm \
         -target=aws_iam_role_policy_attachment.github_route53 \
         -target=aws_iam_role_policy.github_additional \
+        -target=aws_iam_role.github_actions_plan \
+        -target=aws_iam_role_policy_attachment.github_plan_readonly \
+        -target=aws_iam_role_policy.github_plan_state \
         -var="github_repository=${GITHUB_REPO}"
 else
     echo "GitHub OIDC provider does not exist. Creating all resources..."
@@ -68,6 +71,9 @@ else
         -target=aws_iam_role_policy_attachment.github_acm \
         -target=aws_iam_role_policy_attachment.github_route53 \
         -target=aws_iam_role_policy.github_additional \
+        -target=aws_iam_role.github_actions_plan \
+        -target=aws_iam_role_policy_attachment.github_plan_readonly \
+        -target=aws_iam_role_policy.github_plan_state \
         -var="github_repository=${GITHUB_REPO}"
 fi
 
@@ -75,7 +81,9 @@ fi
 echo ""
 echo "Verifying output..."
 ROLE_ARN=$(terraform output -raw github_actions_role_arn)
-echo "GitHub Actions Role ARN: ${ROLE_ARN}"
+PLAN_ROLE_ARN=$(terraform output -raw github_actions_plan_role_arn)
+echo "GitHub Actions Deploy Role ARN: ${ROLE_ARN}"
+echo "GitHub Actions Plan Role ARN:   ${PLAN_ROLE_ARN}"
 
 # Backup the setup file
 echo ""
@@ -85,12 +93,14 @@ mv github-oidc.tf github-oidc.tf.backup
 echo ""
 echo "Setup complete!"
 echo ""
-echo "Save this Role ARN for GitHub Secrets:"
+echo "Save these Role ARNs for GitHub Secrets:"
 echo "  AWS_ROLE_ARN=${ROLE_ARN}"
+echo "  AWS_PLAN_ROLE_ARN=${PLAN_ROLE_ARN}"
 echo ""
 echo "Next steps:"
 echo "  1. Go to your GitHub repo: Settings > Secrets and variables > Actions"
 echo "  2. Add these repository secrets:"
 echo "     - AWS_ROLE_ARN = ${ROLE_ARN}"
+echo "     - AWS_PLAN_ROLE_ARN = ${PLAN_ROLE_ARN}"
 echo "     - DEFAULT_AWS_REGION = us-east-1"
 echo "     - AWS_ACCOUNT_ID = ${AWS_ACCOUNT_ID}"

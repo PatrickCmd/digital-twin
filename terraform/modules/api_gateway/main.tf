@@ -7,7 +7,7 @@ resource "aws_apigatewayv2_api" "main" {
     allow_credentials = false
     allow_headers     = ["*"]
     allow_methods     = ["GET", "POST", "OPTIONS"]
-    allow_origins     = ["*"]
+    allow_origins     = var.cors_origins
     max_age           = 300
   }
 }
@@ -46,6 +46,18 @@ resource "aws_apigatewayv2_route" "post_chat" {
 resource "aws_apigatewayv2_route" "post_chat_stream" {
   api_id    = aws_apigatewayv2_api.main.id
   route_key = "POST /chat/stream"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "post_feedback" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /feedback"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "post_contact" {
+  api_id    = aws_apigatewayv2_api.main.id
+  route_key = "POST /contact"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
 }
 

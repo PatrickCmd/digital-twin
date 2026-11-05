@@ -1,0 +1,226 @@
+name: Terraform Plan
+
+# Plans (never applies) against the existing S3 + DynamoDB backend.
+# - On pull requests: plans dev and prod and posts the result on the PR.
+# - Weekly: drift check; the job fails if a plan shows changes.
+# - Manually: plan any environment on demand.
+# Applies only ever happen in deploy.yml.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - 'backend/**'
+      - 'scripts/deploy.sh'
+      - '.github/workflows/terraform-plan.yml'
+      - '.github/workflows/deploy.yml'
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC: drift detection
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to plan'
+        required: true
+        default: 'all'
+        type: choice
+        options: [all, dev, test, prod]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: terraform-plan-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_VERSION: '1.9.8'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: '0'
+  PROJECT_NAME: twin
+
+jobs:
+  build-package:
+    name: Build Lambda package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      # The Lambda resource hashes this zip, so the plan needs the real package.
+      - name: Build lambda-deployment.zip
+        working-directory: ./backend
+        run: uv run deploy.py
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-deployment
+          path: backend/lambda-deployment.zip
+          retention-days: 1
+
+  plan:
+    name: Plan ${{ matrix.environment }}
+    needs: build-package
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, prod]
+        include:
+          - environment: test
+    # On manual runs only plan the selected environment (or all).
+    if: ${{ always() && needs.build-package.result == 'success' }}
+    steps:
+      - name: Skip environments not selected
+        id: selected
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+             && [ "${{ inputs.environment }}" != "all" ] \
+             && [ "${{ inputs.environment }}" != "${{ matrix.environment }}" ]; then
+            echo "run=false" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ "${{ matrix.environment }}" = "test" ]; then
+            echo "run=false" >> $GITHUB_OUTPUT
+          else
+            echo "run=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout code
+        if: steps.selected.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Download Lambda package
+        if: steps.selected.outputs.run == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-deployment
+          path: backend
+
+      # Read-only plan role when configured; falls back to the deploy role.
+      - name: Configure AWS credentials
+        if: steps.selected.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          role-session-name: github-actions-plan-${{ matrix.environment }}
+          aws-region: ${{ secrets.DEFAULT_AWS_REGION }}
+
+      - name: Setup Terraform
+        if: steps.selected.outputs.run == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform init (S3 backend)
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ./terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${PROJECT_NAME}-terraform-state-${{ secrets.AWS_ACCOUNT_ID }}" \
+            -backend-config="key=${{ matrix.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ secrets.DEFAULT_AWS_REGION }}" \
+            -backend-config="dynamodb_table=${PROJECT_NAME}-terraform-locks" \
+            -backend-config="encrypt=true"
+
+      - name: Terraform fmt and validate
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ./terraform
+        run: |
+          terraform fmt -check -recursive -diff
+          terraform validate -no-color
+
+      - name: Select workspace
+        if: steps.selected.outputs.run == 'true'
+        id: workspace
+        working-directory: ./terraform
+        run: |
+          if terraform workspace list | grep -qw "${{ matrix.environment }}"; then
+            terraform workspace select "${{ matrix.environment }}"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "::notice::Workspace '${{ matrix.environment }}' does not exist yet; nothing to plan against."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Terraform plan
+        if: steps.selected.outputs.run == 'true' && steps.workspace.outputs.exists == 'true'
+        id: plan
+        working-directory: ./terraform
+        run: |
+          set +e
+          VAR_FILE=""
+          if [ -f "${{ matrix.environment }}.tfvars" ]; then
+            VAR_FILE="-var-file=${{ matrix.environment }}.tfvars"
+          fi
+          terraform plan -no-color -input=false -lock-timeout=5m -detailed-exitcode \
+            $VAR_FILE \
+            -var="project_name=${PROJECT_NAME}" \
+            -var="environment=${{ matrix.environment }}" \
+            -var="aws_profile=" \
+            -out=tfplan > plan-output.txt 2>&1
+          EXIT=$?
+          set -e
+          echo "exitcode=$EXIT" >> $GITHUB_OUTPUT
+          cat plan-output.txt
+          # 0 = no changes, 2 = changes, anything else = error
+          if [ "$EXIT" != "0" ] && [ "$EXIT" != "2" ]; then
+            exit $EXIT
+          fi
+          terraform show -no-color tfplan > plan.txt
+
+      - name: Write job summary
+        if: steps.selected.outputs.run == 'true' && steps.workspace.outputs.exists == 'true'
+        working-directory: ./terraform
+        run: |
+          STATUS="No changes"
+          [ "${{ steps.plan.outputs.exitcode }}" = "2" ] && STATUS="Changes pending"
+          {
+            echo "## Terraform plan: ${{ matrix.environment }} ($STATUS)"
+            echo
+            echo '```hcl'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Comment on pull request
+        if: github.event_name == 'pull_request' && steps.selected.outputs.run == 'true' && steps.workspace.outputs.exists == 'true'
+        uses: actions/github-script@v7
+        env:
+          ENVIRONMENT: ${{ matrix.environment }}
+          EXITCODE: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const env = process.env.ENVIRONMENT;
+            const marker = `<!-- terraform-plan:${env} -->`;
+            let plan = fs.readFileSync('terraform/plan.txt', 'utf8');
+            const limit = 55000;
+            if (plan.length > limit) plan = plan.slice(0, limit) + '\n... (truncated, see the job summary for the full plan)';
+            const status = process.env.EXITCODE === '2' ? 'Changes pending' : 'No changes';
+            const body = `${marker}\n### Terraform plan: \`${env}\` — ${status}\n\n<details><summary>Show plan</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n\n</details>\n\n_Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}_`;
+            const { data: comments } = await github.rest.issues.listComments({ ...context.repo, issue_number: context.issue.number, per_page: 100 });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ ...context.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail on drift (scheduled runs)
+        if: github.event_name == 'schedule' && steps.plan.outputs.exitcode == '2'
+        run: |
+          echo "::error::Drift detected in ${{ matrix.environment }}: the deployed infrastructure differs from main. See the job summary."
+          exit 1

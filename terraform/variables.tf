@@ -57,3 +57,27 @@ variable "subdomain_prefix" {
   type        = string
   default     = "digital-twin"
 }
+
+variable "enable_rate_limit_table" {
+  description = "Create a DynamoDB table (pay-per-request) so the per-client chat rate limit is shared across Lambda instances"
+  type        = bool
+  default     = false
+}
+
+variable "enable_contact_email" {
+  description = "Send contact-form messages by email through Amazon SES (sender must be a verified SES identity)"
+  type        = bool
+  default     = false
+}
+
+variable "contact_from_email" {
+  description = "Verified SES sender address used when enable_contact_email is true"
+  type        = string
+  default     = ""
+}
+
+variable "contact_to_email" {
+  description = "Where contact-form messages are delivered when enable_contact_email is true"
+  type        = string
+  default     = ""
+}

@@ -1,3 +1,4 @@
+import glob
 import os
 import shutil
 import zipfile
@@ -42,9 +43,10 @@ def main():
 
     # Copy application files
     print("Copying application files...")
-    for file in ["server.py", "lambda_handler.py", "context.py", "resources.py"]:
-        if os.path.exists(file):
-            shutil.copy2(file, "lambda-package/")
+    for file in sorted(glob.glob("*.py")):
+        if file in ("deploy.py", "eval_twin.py"):
+            continue
+        shutil.copy2(file, "lambda-package/")
     
     # Copy data directory
     if os.path.exists("data"):

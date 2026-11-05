@@ -1,26 +1,45 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
-/* Smooth scrolling animation keyframe */
-@keyframes bounce {
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color-scheme: light dark;
+}
+
+/* Typing indicator */
+@keyframes typing-bounce {
   0%,
   80%,
   100% {
     transform: translateY(0);
+    opacity: 0.5;
   }
   40% {
-    transform: translateY(-10px);
+    transform: translateY(-6px);
+    opacity: 1;
   }
 }
 
-.animate-bounce {
-  animation: bounce 1.4s infinite;
+.typing-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: currentColor;
+  opacity: 0.6;
+  animation: typing-bounce 1.2s infinite ease-in-out;
 }
 
-.delay-100 {
-  animation-delay: 0.1s;
-}
-
-.delay-200 {
-  animation-delay: 0.2s;
+@media (prefers-reduced-motion: reduce) {
+  .typing-dot {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

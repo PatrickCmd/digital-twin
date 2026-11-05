@@ -13,6 +13,11 @@ variable "lambda_invoke_arn" {
   type        = string
 }
 
+variable "cors_origins" {
+  description = "Browser origins allowed to call the API"
+  type        = list(string)
+}
+
 variable "throttle_burst_limit" {
   description = "API Gateway throttle burst limit"
   type        = number

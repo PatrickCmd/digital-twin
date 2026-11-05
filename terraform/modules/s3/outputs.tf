@@ -3,6 +3,11 @@ output "memory_bucket_id" {
   value       = aws_s3_bucket.memory.id
 }
 
+output "memory_bucket_arn" {
+  description = "ARN of the memory S3 bucket"
+  value       = aws_s3_bucket.memory.arn
+}
+
 output "frontend_bucket_id" {
   description = "ID of the frontend S3 bucket"
   value       = aws_s3_bucket.frontend.id

@@ -25,8 +25,13 @@ terraform init -input=false \
   -backend-config="dynamodb_table=twin-terraform-locks" \
   -backend-config="encrypt=true"
 
-echo "Formatting Terraform code..."
-terraform fmt -recursive
+if [ "${CI:-false}" = "true" ]; then
+  echo "Checking Terraform formatting..."
+  terraform fmt -check -recursive -diff
+else
+  echo "Formatting Terraform code..."
+  terraform fmt -recursive
+fi
 
 echo "Validating Terraform configuration..."
 terraform validate
@@ -46,9 +51,9 @@ fi
 # Use environment-specific .tfvars if it exists (e.g., prod.tfvars, dev.tfvars, test.tfvars)
 if [ -f "${ENVIRONMENT}.tfvars" ]; then
   echo "Using ${ENVIRONMENT}.tfvars..."
-  TF_APPLY_CMD=(terraform apply -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
+  TF_APPLY_CMD=(terraform apply -input=false -lock-timeout=5m -var-file="${ENVIRONMENT}.tfvars" -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
 else
-  TF_APPLY_CMD=(terraform apply -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
+  TF_APPLY_CMD=(terraform apply -input=false -lock-timeout=5m -var="project_name=$PROJECT_NAME" -var="environment=$ENVIRONMENT" "${CI_VARS[@]}" -auto-approve)
 fi
 
 echo "Applying Terraform..."
