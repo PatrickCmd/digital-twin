@@ -13,6 +13,14 @@ locals {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # Browser origins allowed to call the API: the CloudFront domain, the custom
+  # domain when enabled, and localhost outside prod for local frontend dev.
+  site_origins = concat(
+    ["https://${module.cloudfront.domain_name}"],
+    var.use_custom_domain ? ["https://${local.custom_subdomain}"] : [],
+    var.environment == "prod" ? [] : ["http://localhost:3000"],
+  )
 }
 
 # S3 buckets (memory + frontend)
@@ -44,8 +52,10 @@ module "lambda" {
   timeout                 = var.lambda_timeout
   bedrock_model_id        = var.bedrock_model_id
   s3_memory_bucket_id     = module.s3.memory_bucket_id
-  cors_origins            = var.use_custom_domain ? "https://${local.custom_subdomain}" : "https://${module.cloudfront.domain_name}"
+  s3_memory_bucket_arn    = module.s3.memory_bucket_arn
+  cors_origins            = join(",", local.site_origins)
   deployment_package_path = "${path.module}/../backend/lambda-deployment.zip"
+  enable_rate_limit_table = var.enable_rate_limit_table
   common_tags             = local.common_tags
 }
 
@@ -56,6 +66,7 @@ module "api_gateway" {
   name_prefix          = local.name_prefix
   lambda_function_name = module.lambda.function_name
   lambda_invoke_arn    = module.lambda.invoke_arn
+  cors_origins         = local.site_origins
   throttle_burst_limit = var.api_throttle_burst_limit
   throttle_rate_limit  = var.api_throttle_rate_limit
   common_tags          = local.common_tags

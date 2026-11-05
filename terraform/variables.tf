@@ -57,3 +57,9 @@ variable "subdomain_prefix" {
   type        = string
   default     = "digital-twin"
 }
+
+variable "enable_rate_limit_table" {
+  description = "Create a DynamoDB table (pay-per-request) so the per-client chat rate limit is shared across Lambda instances"
+  type        = bool
+  default     = false
+}
