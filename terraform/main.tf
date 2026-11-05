@@ -56,6 +56,9 @@ module "lambda" {
   cors_origins            = join(",", local.site_origins)
   deployment_package_path = "${path.module}/../backend/lambda-deployment.zip"
   enable_rate_limit_table = var.enable_rate_limit_table
+  enable_contact_email    = var.enable_contact_email
+  contact_from_email      = var.contact_from_email
+  contact_to_email        = var.contact_to_email
   common_tags             = local.common_tags
 }
 

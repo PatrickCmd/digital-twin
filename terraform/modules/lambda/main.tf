@@ -63,6 +63,17 @@ resource "aws_iam_role_policy" "lambda_app" {
           Action   = ["dynamodb:UpdateItem"]
           Resource = aws_dynamodb_table.rate_limit[0].arn
         },
+      ] : [],
+      var.enable_contact_email ? [
+        {
+          Sid      = "SendContactEmail"
+          Effect   = "Allow"
+          Action   = ["ses:SendEmail"]
+          Resource = "*"
+          Condition = {
+            StringEquals = { "ses:FromAddress" = var.contact_from_email }
+          }
+        },
       ] : []
     )
   })
@@ -114,7 +125,8 @@ resource "aws_lambda_function" "api" {
         RATE_LIMIT_REQUESTS       = tostring(var.rate_limit_requests)
         RATE_LIMIT_WINDOW_SECONDS = tostring(var.rate_limit_window_seconds)
       },
-      var.enable_rate_limit_table ? { RATE_LIMIT_TABLE = aws_dynamodb_table.rate_limit[0].name } : {}
+      var.enable_rate_limit_table ? { RATE_LIMIT_TABLE = aws_dynamodb_table.rate_limit[0].name } : {},
+      var.enable_contact_email ? { SES_FROM_EMAIL = var.contact_from_email, SES_TO_EMAIL = var.contact_to_email } : {}
     )
   }
 

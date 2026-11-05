@@ -88,3 +88,35 @@ def test_feedback_is_stored(client, tmp_path):
     assert json.loads(stored[0].read_text())["rating"] == "up"
     assert client.post("/feedback", json={"session_id": "nope", "message_index": 0, "rating": "up"}).status_code == 422
     assert client.post("/feedback", json={"session_id": first["session_id"], "message_index": 0, "rating": "meh"}).status_code == 422
+
+
+def test_contact_is_stored_and_validated(client, tmp_path):
+    payload = {"name": "Ada", "email": "ada@example.com", "message": "Hello Patrick"}
+    r = client.post("/contact", json=payload)
+    assert r.status_code == 201
+    assert r.json() == {"status": "ok", "emailed": False}
+    stored = list((tmp_path / "contact").rglob("*.json"))
+    assert len(stored) == 1 and json.loads(stored[0].read_text())["email"] == "ada@example.com"
+
+    assert client.post("/contact", json={**payload, "email": "not-an-email"}).status_code == 422
+    assert client.post("/contact", json={**payload, "message": "   "}).status_code == 422
+    # Honeypot: looks successful, stores nothing new.
+    assert client.post("/contact", json={**payload, "website": "http://spam"}).status_code == 201
+    assert len(list((tmp_path / "contact").rglob("*.json"))) == 1
+
+
+def test_contact_emails_via_ses_when_configured(client, monkeypatch):
+    sent = {}
+
+    class FakeSes:
+        def send_email(self, **kwargs):
+            sent.update(kwargs)
+            return {"MessageId": "1"}
+
+    monkeypatch.setattr(server, "ses_client", FakeSes())
+    monkeypatch.setattr(server, "SES_FROM_EMAIL", "twin@example.com")
+    monkeypatch.setattr(server, "SES_TO_EMAIL", "me@example.com")
+    r = client.post("/contact", json={"name": "Ada", "email": "ada@example.com", "message": "Hi"})
+    assert r.json()["emailed"] is True
+    assert sent["Destination"] == {"ToAddresses": ["me@example.com"]}
+    assert sent["ReplyToAddresses"] == ["ada@example.com"]

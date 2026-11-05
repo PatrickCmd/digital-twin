@@ -64,6 +64,24 @@ variable "enable_rate_limit_table" {
   default     = false
 }
 
+variable "enable_contact_email" {
+  description = "Email contact-form messages through Amazon SES. Requires contact_from_email to be a verified SES identity."
+  type        = bool
+  default     = false
+}
+
+variable "contact_from_email" {
+  description = "Verified SES sender address for contact-form email"
+  type        = string
+  default     = ""
+}
+
+variable "contact_to_email" {
+  description = "Recipient of contact-form email"
+  type        = string
+  default     = ""
+}
+
 variable "common_tags" {
   description = "Common tags for all resources"
   type        = map(string)

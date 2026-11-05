@@ -130,7 +130,7 @@ function FeedbackButton({
       className={`p-1 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600 dark:focus-visible:ring-slate-300 ${
         active
           ? 'text-slate-900 dark:text-white'
-          : 'text-gray-400 hover:text-gray-700 dark:text-slate-500 dark:hover:text-slate-200'
+          : 'text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-slate-100'
       }`}
     >
       <Icon className="w-4 h-4" aria-hidden="true" fill={active ? 'currentColor' : 'none'} />

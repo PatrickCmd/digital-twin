@@ -64,6 +64,12 @@ rate_limiter = limiter_from_env()
 if USE_S3:
     s3_client = boto3.client("s3")
 
+# Contact form email (Amazon SES). Both must be set, and the from address must
+# be a verified SES identity; otherwise messages are stored but not emailed.
+SES_FROM_EMAIL = os.getenv("SES_FROM_EMAIL", "").strip()
+SES_TO_EMAIL = os.getenv("SES_TO_EMAIL", "").strip()
+ses_client = boto3.client("ses", region_name=os.getenv("DEFAULT_AWS_REGION", "us-east-1")) if SES_FROM_EMAIL and SES_TO_EMAIL else None
+
 
 def log_event(event: str, **fields) -> None:
     """One structured JSON line per event, for CloudWatch Logs Insights."""
@@ -103,6 +109,24 @@ class Message(BaseModel):
     role: str
     content: str
     timestamp: str
+
+
+EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+class ContactRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    email: str = Field(min_length=3, max_length=254, pattern=EMAIL_PATTERN)
+    message: str = Field(min_length=1, max_length=2000)
+    # Honeypot: real users never fill this hidden field.
+    website: Optional[str] = Field(default=None, max_length=200)
+
+    @field_validator("name", "message")
+    @classmethod
+    def contact_fields_must_not_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value.strip()
 
 
 class FeedbackRequest(BaseModel):
@@ -435,6 +459,56 @@ async def feedback(request: FeedbackRequest, client: str = Depends(enforce_rate_
     except Exception as e:
         print(f"Error in feedback endpoint: {str(e)}")
         raise api_error(500, "server_error", "Could not save feedback.")
+
+
+def send_contact_email(record: Dict) -> bool:
+    """Email the contact message via SES when configured. Returns True if sent."""
+    if ses_client is None:
+        return False
+    body = (
+        f"New message from the digital twin site\n\n"
+        f"Name: {record['name']}\nEmail: {record['email']}\n\n{record['message']}\n"
+    )
+    ses_client.send_email(
+        Source=SES_FROM_EMAIL,
+        Destination={"ToAddresses": [SES_TO_EMAIL]},
+        ReplyToAddresses=[record["email"]],
+        Message={
+            "Subject": {"Data": f"Digital twin contact from {record['name']}"},
+            "Body": {"Text": {"Data": body}},
+        },
+    )
+    return True
+
+
+@app.post("/contact", status_code=201)
+async def contact(request: ContactRequest, client: str = Depends(enforce_rate_limit)):
+    """'Leave a message' form. Stored under contact/ and emailed via SES when configured."""
+    if request.website:
+        # Honeypot filled: pretend success, store nothing.
+        log_event("contact_honeypot", client=client)
+        return {"status": "ok", "emailed": False}
+    try:
+        record = {
+            "name": request.name,
+            "email": request.email,
+            "message": request.message,
+            "client": client,
+            "received_at": datetime.now(timezone.utc).isoformat(),
+        }
+        key = store_record("contact", record)
+        emailed = False
+        try:
+            emailed = send_contact_email(record)
+        except Exception as e:  # noqa: BLE001 - the message is already stored
+            print(f"SES send failed: {e}")
+        log_event("contact", client=client, key=key, emailed=emailed)
+        return {"status": "ok", "emailed": emailed}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in contact endpoint: {str(e)}")
+        raise api_error(500, "server_error", "Could not save your message. Please email directly instead.")
 
 
 @app.get("/conversation/{session_id}")

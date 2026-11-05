@@ -25,7 +25,7 @@ export function friendlyMessage(status: number, body: ApiErrorBody | null): stri
   }
   if (status === 429) return 'You have sent a lot of messages in a short time. Please wait a few minutes and try again.';
   if (status === 409) return 'This conversation has reached its length limit. Please start a new chat.';
-  if (status === 422) return 'That message could not be sent. Try shortening it.';
+  if (status === 422) return 'That could not be sent. Please check the fields and try again.';
   return 'The twin is busy right now. Please try again in a minute.';
 }
 
@@ -102,6 +102,15 @@ export async function sendFeedback(payload: {
   assistant_preview?: string;
 }): Promise<void> {
   const response = await fetch(`${API_URL}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new ApiError(response.status, await readErrorBody(response));
+}
+
+export async function sendContact(payload: { name: string; email: string; message: string; website?: string }): Promise<void> {
+  const response = await fetch(`${API_URL}/contact`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),

@@ -2,6 +2,7 @@ import Image from 'next/image';
 import { Globe, FileText, Mail } from 'lucide-react';
 import { GitHubIcon, LinkedInIcon } from '@/components/brand-icons';
 import Twin from '@/components/twin';
+import RecruiterDialog from '@/components/recruiter-dialog';
 import { profile, disclosure } from '@/content/profile';
 
 export default function Home() {
@@ -33,6 +34,7 @@ export default function Home() {
             <p className="hidden sm:block text-sm text-gray-700 dark:text-slate-200 mt-1">{profile.headline}</p>
           </div>
           <nav aria-label="Patrick's links" className="flex flex-wrap justify-end gap-1.5 sm:gap-2 shrink-0 max-w-[40%]">
+            <RecruiterDialog />
             {links.map(({ href, label, Icon }) => (
               <a
                 key={label}

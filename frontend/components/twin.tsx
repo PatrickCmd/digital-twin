@@ -7,6 +7,7 @@ import { createId, now } from '@/lib/ids';
 import { ApiError, errorFromUnknown, sendFeedback, streamChat, type Rating } from '@/lib/api';
 import { clearChat, loadChat, saveChat, type ChatMessage } from '@/lib/chat-storage';
 import MessageBubble, { Avatar } from '@/components/message-bubble';
+import RecruiterCard from '@/components/recruiter-card';
 
 interface ChatError {
   message: string;
@@ -47,7 +48,7 @@ export default function Twin() {
   // Auto-scroll the message pane (not the page) while the reader is near the bottom.
   useEffect(() => {
     const pane = paneRef.current;
-    if (pane && stickToBottomRef.current) {
+    if (pane && stickToBottomRef.current && (messages.length > 0 || error)) {
       pane.scrollTop = pane.scrollHeight;
     }
   }, [messages, error, isStreaming]);
@@ -236,6 +237,9 @@ export default function Twin() {
             <p className="text-xs mt-4 text-gray-500 dark:text-slate-400">
               What this twin knows: {profile.name}&apos;s resume/LinkedIn and project notes, last updated {profile.knowledge_updated}.
             </p>
+            <div className="mt-6 max-w-2xl mx-auto">
+              <RecruiterCard compact />
+            </div>
           </div>
         )}
 
