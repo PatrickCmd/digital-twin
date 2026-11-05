@@ -102,8 +102,16 @@ def ask_api(base_url: str, question: str) -> str:
         data=body,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=90) as resp:
-        return json.loads(resp.read().decode())["response"]
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            return json.loads(resp.read().decode())["response"]
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode(errors="replace")[:500]
+        raise SystemExit(
+            f"{base_url} returned HTTP {exc.code} for POST /chat: {body}\n"
+            "If every route (even GET /health) fails with 500, the Lambda is crashing at startup; "
+            "check CloudWatch: aws logs tail /aws/lambda/<function-name> --since 30m"
+        ) from exc
 
 
 def run(ask) -> int:

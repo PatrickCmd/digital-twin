@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# AWS CLI profile for this one-time setup (admin). Override with AWS_PROFILE=<name>.
+AWS_PROFILE_NAME="${AWS_PROFILE:-patrickcmd}"
+echo "Using AWS profile: ${AWS_PROFILE_NAME}"
+
 echo "🔧 Setting up Terraform state management resources..."
 
 # Navigate to terraform directory
@@ -25,6 +29,7 @@ terraform workspace select default 2>/dev/null || true
 # Initialize Terraform
 echo "🔄 Initializing Terraform..."
 terraform init -input=false
+export TF_VAR_aws_profile="${AWS_PROFILE_NAME}"
 
 # Apply just the backend resources (targeted apply)
 echo "🚀 Applying state management resources..."

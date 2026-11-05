@@ -71,6 +71,19 @@ Implements the plan in `docs/improvement-plan.md`. One commit per item.
   `AWS_ROLE_ARN`.
 - `required_version` pinned to `>= 1.9.0, < 2.0.0`.
 
+### 8. Fix: Lambda crashed at startup after the first deploy
+- Every route on dev returned API Gateway's 500 after the merge. The freshly built
+  package pulled the newest `pymupdf4llm`, which now depends on `pymupdf-layout`,
+  `onnxruntime` and `numpy` (~190 MB) and loads a layout model when the PDF is converted
+  at import time.
+- The LinkedIn PDF is now converted once at build time (`build_knowledge.py`, run by
+  `deploy.py`) and committed as `data/me/linkedin.md`; `requirements.txt` for the Lambda
+  no longer includes `pymupdf4llm`/`pypdf`, and the package excludes the PDF.
+- `eval_twin.py --api` now prints the HTTP error body instead of a traceback.
+- One-time setup scripts (`setup-backend.sh`, `setup-github-oidc.sh`,
+  `setup-github-secrets.sh`) use the `patrickcmd` AWS profile (override with
+  `AWS_PROFILE`) for `aws` calls and pass it to Terraform via `TF_VAR_aws_profile`.
+
 ### Not done / needs a decision from Patrick
 - **Re-run the OIDC setup.** `./scripts/setup-github-oidc.sh` then
   `./scripts/setup-github-secrets.sh` to create the plan role and tighten the deploy

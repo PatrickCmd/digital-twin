@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# AWS CLI profile for this one-time setup (admin). Override with AWS_PROFILE=<name>.
+AWS_PROFILE_NAME="${AWS_PROFILE:-patrickcmd}"
+echo "Using AWS profile: ${AWS_PROFILE_NAME}"
+
 AWS_REGION=${1:-us-east-1}
 
 echo "Setting up GitHub Actions repository secrets..."
@@ -19,12 +23,12 @@ if ! gh auth status &> /dev/null; then
 fi
 
 # Auto-detect values
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+AWS_ACCOUNT_ID=$(aws sts --profile "${AWS_PROFILE_NAME}" get-caller-identity --query Account --output text)
 AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/github-actions-twin-deploy"
 AWS_PLAN_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/github-actions-twin-plan"
 
 # Verify the role exists
-if ! aws iam get-role --role-name github-actions-twin-deploy &> /dev/null; then
+if ! aws iam --profile "${AWS_PROFILE_NAME}" get-role --role-name github-actions-twin-deploy &> /dev/null; then
     echo "Error: IAM role 'github-actions-twin-deploy' not found."
     echo "Run ./scripts/setup-github-oidc.sh first."
     exit 1
@@ -42,7 +46,7 @@ echo ""
 echo "Setting AWS_ROLE_ARN..."
 gh secret set AWS_ROLE_ARN --body "${AWS_ROLE_ARN}"
 
-if aws iam get-role --role-name github-actions-twin-plan &> /dev/null; then
+if aws iam --profile "${AWS_PROFILE_NAME}" get-role --role-name github-actions-twin-plan &> /dev/null; then
   echo "Setting AWS_PLAN_ROLE_ARN..."
   gh secret set AWS_PLAN_ROLE_ARN --body "${AWS_PLAN_ROLE_ARN}"
 else

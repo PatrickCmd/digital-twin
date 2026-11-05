@@ -1,8 +1,8 @@
+# Lambda runtime dependencies only. PDF tooling (pymupdf4llm) is a build-time
+# dependency in pyproject.toml; build_knowledge.py pre-converts the PDF.
 fastapi
 uvicorn
 python-dotenv
 python-multipart
-pypdf
-pymupdf4llm
 boto3
 mangum

@@ -35,3 +35,19 @@ def test_bedrock_calls_use_system_parameter(monkeypatch):
     roles = [m["role"] for m in captured["messages"]]
     assert roles == ["user", "assistant", "user"]
     assert not captured["messages"][0]["content"][0]["text"].startswith("System:")
+
+
+def test_linkedin_markdown_is_prebuilt_and_used():
+    import os
+
+    md = os.path.join(resources.DATA_DIR, "me", "linkedin.md")
+    assert os.path.exists(md), "run `uv run build_knowledge.py` after changing linkedin.pdf"
+    assert "Sunbird AI" in resources.linkedin
+
+
+def test_lambda_requirements_exclude_pdf_tooling():
+    import os
+
+    path = os.path.join(os.path.dirname(resources.DATA_DIR), "requirements.txt")
+    packages = [l.strip() for l in open(path) if l.strip() and not l.startswith("#")]
+    assert not any(p.startswith(("pymupdf", "pypdf")) for p in packages)
