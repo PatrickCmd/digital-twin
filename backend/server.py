@@ -105,6 +105,22 @@ class Message(BaseModel):
     timestamp: str
 
 
+class FeedbackRequest(BaseModel):
+    session_id: str
+    message_index: int = Field(ge=0, le=10000)
+    rating: str = Field(pattern="^(up|down)$")
+    comment: Optional[str] = Field(default=None, max_length=500)
+    assistant_preview: Optional[str] = Field(default=None, max_length=300)
+
+    @field_validator("session_id")
+    @classmethod
+    def feedback_session_id_must_be_uuid(cls, value: str) -> str:
+        try:
+            return str(uuid.UUID(value))
+        except ValueError as exc:
+            raise ValueError("session_id must be a UUID") from exc
+
+
 # Error handling: every error body is {"error": <code>, "detail": <human text>}
 def api_error(status_code: int, code: str, detail: str, headers: Optional[Dict[str, str]] = None) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"error": code, "detail": detail}, headers=headers)
@@ -185,6 +201,20 @@ def save_conversation(session_id: str, messages: List[Dict]):
         file_path = os.path.join(MEMORY_DIR, get_memory_path(session_id))
         with open(file_path, "w") as f:
             json.dump(messages, f, indent=2)
+
+
+def store_record(prefix: str, record: Dict) -> str:
+    """Write a small JSON record under <prefix>/<date>/<uuid>.json (S3 or local). Returns the key."""
+    key = f"{prefix}/{datetime.now(timezone.utc).strftime('%Y-%m-%d')}/{uuid.uuid4()}.json"
+    body = json.dumps(record, indent=2, default=str)
+    if USE_S3:
+        s3_client.put_object(Bucket=S3_BUCKET, Key=key, Body=body, ContentType="application/json")
+    else:
+        file_path = os.path.join(MEMORY_DIR, key)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w") as f:
+            f.write(body)
+    return key
 
 
 def ensure_session_has_room(conversation: List[Dict]) -> None:
@@ -386,6 +416,25 @@ async def chat_stream(request: ChatRequest, client: str = Depends(enforce_rate_l
     except Exception as e:
         print(f"Error in chat stream endpoint: {str(e)}")
         raise api_error(500, "server_error", "Something went wrong. Please try again.")
+
+
+@app.post("/feedback", status_code=201)
+async def feedback(request: FeedbackRequest, client: str = Depends(enforce_rate_limit)):
+    """Thumbs up/down on an answer. Stored as JSON next to the conversation memory."""
+    try:
+        record = {
+            **request.model_dump(),
+            "client": client,
+            "received_at": datetime.now(timezone.utc).isoformat(),
+        }
+        key = store_record("feedback", record)
+        log_event("feedback", session_id=request.session_id, rating=request.rating, client=client, key=key)
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in feedback endpoint: {str(e)}")
+        raise api_error(500, "server_error", "Could not save feedback.")
 
 
 @app.get("/conversation/{session_id}")

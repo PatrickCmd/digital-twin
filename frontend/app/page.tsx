@@ -14,48 +14,49 @@ export default function Home() {
   ].filter((l): l is { href: string; label: string; Icon: typeof Globe } => Boolean(l.href));
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          <header className="flex flex-col items-center text-center mb-8">
-            <Image
-              src="/avatar.png"
-              alt={profile.full_name}
-              width={96}
-              height={96}
-              priority
-              className="w-24 h-24 rounded-full border-2 border-slate-300 shadow mb-4"
-            />
-            <h1 className="text-4xl font-bold text-gray-800 mb-1">
-              {profile.full_name}
-            </h1>
-            <p className="text-gray-600">{profile.title} · {profile.location}</p>
-            <p className="text-gray-700 mt-3 max-w-2xl">{profile.headline}</p>
-
-            <nav aria-label="Patrick's links" className="flex flex-wrap justify-center gap-2 mt-4">
-              {links.map(({ href, label, Icon }) => (
-                <a
-                  key={label}
-                  href={href}
-                  target={href.startsWith('mailto:') ? undefined : '_blank'}
-                  rel={href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
-                >
-                  <Icon className="w-4 h-4" aria-hidden="true" />
-                  {label}
-                </a>
-              ))}
-            </nav>
-          </header>
-
-          <div className="h-[600px]">
-            <Twin />
+    <main className="h-dvh flex flex-col bg-gradient-to-br from-slate-50 to-gray-100 dark:from-slate-950 dark:to-slate-900 text-gray-800 dark:text-slate-100">
+      <div className="flex flex-col flex-1 min-h-0 w-full max-w-4xl mx-auto px-4 pt-4 sm:pt-6 pb-2">
+        <header className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4">
+          <Image
+            src="/avatar.png"
+            alt={profile.full_name}
+            width={64}
+            height={64}
+            priority
+            className="w-12 h-12 sm:w-16 sm:h-16 rounded-full border-2 border-slate-300 dark:border-slate-600 shadow shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <h1 className="text-xl sm:text-2xl font-bold leading-tight">{profile.full_name}</h1>
+            <p className="text-sm text-gray-600 dark:text-slate-300 truncate">
+              {profile.title} · {profile.location}
+            </p>
+            <p className="hidden sm:block text-sm text-gray-700 dark:text-slate-200 mt-1">{profile.headline}</p>
           </div>
+          <nav aria-label="Patrick's links" className="flex flex-wrap justify-end gap-1.5 sm:gap-2 shrink-0 max-w-[40%]">
+            {links.map(({ href, label, Icon }) => (
+              <a
+                key={label}
+                href={href}
+                target={href.startsWith('mailto:') ? undefined : '_blank'}
+                rel={href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
+                title={label}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600 dark:focus-visible:ring-slate-300"
+              >
+                <Icon className="w-4 h-4" aria-hidden="true" />
+                <span className="hidden sm:inline">{label}</span>
+                <span className="sr-only sm:hidden">{label}</span>
+              </a>
+            ))}
+          </nav>
+        </header>
 
-          <footer className="mt-6 text-center text-sm text-gray-500 space-y-1">
-            <p>{disclosure}</p>
-          </footer>
+        <div className="flex-1 min-h-0">
+          <Twin />
         </div>
+
+        <footer className="mt-2 text-center text-xs text-gray-500 dark:text-slate-400">
+          <p>{disclosure}</p>
+        </footer>
       </div>
     </main>
   );

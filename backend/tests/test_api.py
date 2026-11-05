@@ -11,7 +11,7 @@ from rate_limit import MemoryStore, RateLimiter
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "MEMORY_DIR", str(tmp_path))
-    monkeypatch.setattr(server, "rate_limiter", RateLimiter(MemoryStore(), limit=3, window_seconds=600))
+    monkeypatch.setattr(server, "rate_limiter", RateLimiter(MemoryStore(), limit=10, window_seconds=600))
 
     def fake_stream(conversation, user_message, stats=None):
         if stats is not None:
@@ -51,7 +51,8 @@ def test_blank_message_and_bad_session_id_are_rejected(client):
     assert r.json()["error"] == "invalid_session"
 
 
-def test_rate_limit_returns_429_with_retry_after(client):
+def test_rate_limit_returns_429_with_retry_after(client, monkeypatch):
+    monkeypatch.setattr(server, "rate_limiter", RateLimiter(MemoryStore(), limit=3, window_seconds=600))
     for _ in range(3):
         assert client.post("/chat", json={"message": "hi"}).status_code == 200
     r = client.post("/chat", json={"message": "hi"})
@@ -73,3 +74,17 @@ def test_history_is_persisted_per_session(client):
     client.post("/chat", json={"message": "two", "session_id": first["session_id"]})
     history = server.load_conversation(first["session_id"])
     assert [m["role"] for m in history] == ["user", "assistant", "user", "assistant"]
+
+
+def test_feedback_is_stored(client, tmp_path):
+    first = client.post("/chat", json={"message": "hi"}).json()
+    r = client.post(
+        "/feedback",
+        json={"session_id": first["session_id"], "message_index": 1, "rating": "up", "assistant_preview": "Hello"},
+    )
+    assert r.status_code == 201
+    stored = list((tmp_path / "feedback").rglob("*.json"))
+    assert len(stored) == 1
+    assert json.loads(stored[0].read_text())["rating"] == "up"
+    assert client.post("/feedback", json={"session_id": "nope", "message_index": 0, "rating": "up"}).status_code == 422
+    assert client.post("/feedback", json={"session_id": first["session_id"], "message_index": 0, "rating": "meh"}).status_code == 422

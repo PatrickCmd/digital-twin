@@ -1,276 +1,336 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import Image from 'next/image';
-import { Send, Bot, User } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
-import { fetchEventSource } from '@microsoft/fetch-event-source';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Bot, RotateCcw, Send, SquarePen, Square } from 'lucide-react';
 import { profile } from '@/content/profile';
 import { createId, now } from '@/lib/ids';
+import { ApiError, errorFromUnknown, sendFeedback, streamChat, type Rating } from '@/lib/api';
+import { clearChat, loadChat, saveChat, type ChatMessage } from '@/lib/chat-storage';
+import MessageBubble, { Avatar } from '@/components/message-bubble';
 
-interface Message {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    timestamp: Date;
+interface ChatError {
+  message: string;
+  code: string;
+  retryText: string | null;
 }
 
+const MAX_INPUT_CHARS = 2000;
+
 export default function Twin() {
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [sessionId, setSessionId] = useState<string>('');
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [input, setInput] = useState('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [error, setError] = useState<ChatError | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    };
+  const paneRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const stickToBottomRef = useRef(true);
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+  // Restore a previous conversation (versioned localStorage key).
+  useEffect(() => {
+    const stored = loadChat();
+    if (stored) {
+      setMessages(stored.messages);
+      setSessionId(stored.sessionId);
+    }
+    setHydrated(true);
+  }, []);
 
-    const sendMessage = async (text?: string) => {
-        const messageText = (text ?? input).trim();
-        if (!messageText || isLoading) return;
+  useEffect(() => {
+    if (!hydrated) return;
+    saveChat({ version: 1, sessionId, messages });
+  }, [hydrated, sessionId, messages]);
 
-        const userMessage: Message = {
-            id: createId(),
-            role: 'user',
-            content: messageText,
-            timestamp: now(),
-        };
+  // Auto-scroll the message pane (not the page) while the reader is near the bottom.
+  useEffect(() => {
+    const pane = paneRef.current;
+    if (pane && stickToBottomRef.current) {
+      pane.scrollTop = pane.scrollHeight;
+    }
+  }, [messages, error, isStreaming]);
 
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setIsLoading(true);
+  const handlePaneScroll = () => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const distance = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
+    stickToBottomRef.current = distance < 80;
+  };
 
-        const assistantMessageId = createId();
-        let buffer = '';
+  const resizeTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
 
-        // Add empty assistant message that will be filled by streaming
-        setMessages(prev => [...prev, {
-            id: assistantMessageId,
-            role: 'assistant',
-            content: '',
-            timestamp: now(),
-        }]);
+  useEffect(() => {
+    resizeTextarea();
+  }, [input, resizeTextarea]);
 
-        const controller = new AbortController();
+  const focusComposer = () => {
+    window.setTimeout(() => textareaRef.current?.focus(), 50);
+  };
 
-        await fetchEventSource(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/chat/stream`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                message: messageText,
-                session_id: sessionId || undefined,
-            }),
-            signal: controller.signal,
-            openWhenHidden: true,
-            onmessage(ev) {
-                const data = JSON.parse(ev.data);
+  const sendMessage = async (text?: string) => {
+    const messageText = (text ?? input).trim();
+    if (!messageText || isStreaming) return;
+    if (messageText.length > MAX_INPUT_CHARS) {
+      setError({
+        message: `Messages are limited to ${MAX_INPUT_CHARS} characters.`,
+        code: 'message_too_long',
+        retryText: null,
+      });
+      return;
+    }
 
-                if (data.type === 'session') {
-                    setSessionId(data.session_id);
-                } else if (data.type === 'chunk') {
-                    buffer += data.content;
-                    setMessages(prev =>
-                        prev.map(msg =>
-                            msg.id === assistantMessageId
-                                ? { ...msg, content: buffer }
-                                : msg
-                        )
-                    );
-                } else if (data.type === 'error') {
-                    setMessages(prev =>
-                        prev.map(msg =>
-                            msg.id === assistantMessageId
-                                ? { ...msg, content: `Error: ${data.message}` }
-                                : msg
-                        )
-                    );
-                }
-            },
-            onclose() {
-                setIsLoading(false);
-                setTimeout(() => inputRef.current?.focus(), 100);
-            },
-            onerror(err) {
-                console.error('SSE error:', err);
-                setMessages(prev =>
-                    prev.map(msg =>
-                        msg.id === assistantMessageId && !msg.content
-                            ? { ...msg, content: 'Sorry, I encountered an error. Please try again.' }
-                            : msg
-                    )
-                );
-                controller.abort();
-                setIsLoading(false);
-                setTimeout(() => inputRef.current?.focus(), 100);
-                throw err; // stop retrying
-            },
-        });
+    setError(null);
+    setInput('');
+    stickToBottomRef.current = true;
 
-        setIsLoading(false);
-        setTimeout(() => inputRef.current?.focus(), 100);
-    };
+    const userMessage: ChatMessage = { id: createId(), role: 'user', content: messageText, timestamp: now().toISOString() };
+    const assistantId = createId();
+    const assistantMessage: ChatMessage = { id: assistantId, role: 'assistant', content: '', timestamp: now().toISOString() };
+    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setIsStreaming(true);
 
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    };
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let received = '';
 
-    return (
-        <div className="flex flex-col h-full bg-gray-50 rounded-lg shadow-lg">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-4 rounded-t-lg">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                    <Bot className="w-6 h-6" />
-                    AI Digital Twin
-                </h2>
-                <p className="text-sm text-slate-300 mt-1">{profile.full_name}&apos;s AI Digital Twin</p>
-            </div>
+    try {
+      await streamChat(messageText, sessionId, controller.signal, {
+        onSession: (id) => setSessionId(id),
+        onChunk: (chunk) => {
+          received += chunk;
+          const snapshot = received;
+          setMessages((prev) => prev.map((m) => (m.id === assistantId ? { ...m, content: snapshot } : m)));
+        },
+      });
+      if (controller.signal.aborted) {
+        setMessages((prev) =>
+          prev
+            .map((m) => (m.id === assistantId ? { ...m, stopped: true } : m))
+            .filter((m) => m.id !== assistantId || m.content),
+        );
+      }
+    } catch (err: unknown) {
+      const apiError: ApiError = errorFromUnknown(err);
+      // Drop the empty assistant bubble; keep the user's message so Retry can re-send it.
+      setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+      setError({ message: apiError.message, code: apiError.code, retryText: messageText });
+      if (received === '') {
+        setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
+      }
+    } finally {
+      abortRef.current = null;
+      setIsStreaming(false);
+      focusComposer();
+    }
+  };
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 && (
-                    <div className="text-center text-gray-500 mt-8">
-                        <Image
-                            src="/avatar.png"
-                            alt="Patrick Walukagga"
-                            width={80}
-                            height={80}
-                            className="w-20 h-20 rounded-full mx-auto mb-3 border-2 border-gray-300"
-                        />
-                        <p>Hello! I&apos;m {profile.full_name}&apos;s Digital Twin.</p>
-                        <p className="text-sm mt-2">Ask me anything about {profile.name}, or start with one of these:</p>
-                        <p className="text-xs mt-2 text-gray-400">
-                            What this twin knows: {profile.name}&apos;s resume/LinkedIn and project notes, last updated {profile.knowledge_updated}.
-                        </p>
-                        <ul className="flex flex-wrap justify-center gap-2 mt-4 px-2" aria-label="Suggested questions">
-                            {profile.suggested_questions.map((q) => (
-                                <li key={q}>
-                                    <button
-                                        type="button"
-                                        onClick={() => sendMessage(q)}
-                                        className="px-3 py-1.5 text-sm rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
-                                    >
-                                        {q}
-                                    </button>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
+  const stopStreaming = () => {
+    abortRef.current?.abort();
+  };
 
-                {messages.map((message) => (
-                    <div
-                        key={message.id}
-                        className={`flex gap-3 ${
-                            message.role === 'user' ? 'justify-end' : 'justify-start'
-                        }`}
-                    >
-                        {message.role === 'assistant' && (
-                            <div className="flex-shrink-0">
-                                <Image
-                                    src="/avatar.png"
-                                    alt=""
-                                    width={32}
-                                    height={32}
-                                    className="w-8 h-8 rounded-full border border-slate-300"
-                                />
-                            </div>
-                        )}
+  const newChat = () => {
+    abortRef.current?.abort();
+    clearChat();
+    setMessages([]);
+    setSessionId(null);
+    setError(null);
+    setInput('');
+    focusComposer();
+  };
 
-                        <div
-                            className={`max-w-[70%] rounded-lg p-3 ${
-                                message.role === 'user'
-                                    ? 'bg-slate-700 text-white'
-                                    : 'bg-white border border-gray-200 text-gray-800'
-                            }`}
-                        >
-                            {message.role === 'assistant' ? (
-                                <div className="prose prose-sm max-w-none prose-p:text-gray-800 prose-li:text-gray-800 prose-strong:text-gray-900 prose-headings:text-gray-900 prose-a:text-blue-600 prose-code:text-gray-800 prose-pre:bg-gray-100 prose-pre:text-gray-800 prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-2 overflow-x-auto break-words">
-                                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                                        {message.content}
-                                    </ReactMarkdown>
-                                </div>
-                            ) : (
-                                <p className="whitespace-pre-wrap">{message.content}</p>
-                            )}
-                            <p
-                                className={`text-xs mt-1 ${
-                                    message.role === 'user' ? 'text-slate-300' : 'text-gray-500'
-                                }`}
-                            >
-                                {message.timestamp.toLocaleTimeString()}
-                            </p>
-                        </div>
+  const retry = () => {
+    if (!error?.retryText) return;
+    const text = error.retryText;
+    setError(null);
+    void sendMessage(text);
+  };
 
-                        {message.role === 'user' && (
-                            <div className="flex-shrink-0">
-                                <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center">
-                                    <User className="w-5 h-5 text-white" />
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                ))}
+  const rate = async (message: ChatMessage, rating: Rating) => {
+    if (!sessionId) return;
+    const next: Rating | undefined = message.feedback === rating ? undefined : rating;
+    setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, feedback: next } : m)));
+    if (!next) return;
+    const index = messages.findIndex((m) => m.id === message.id);
+    try {
+      await sendFeedback({
+        session_id: sessionId,
+        message_index: index,
+        rating: next,
+        assistant_preview: message.content.slice(0, 200),
+      });
+    } catch {
+      // Feedback is best effort; the UI already reflects the click.
+    }
+  };
 
-                {isLoading && (
-                    <div className="flex gap-3 justify-start">
-                        <div className="flex-shrink-0">
-                            <Image
-                                    src="/avatar.png"
-                                    alt=""
-                                    width={32}
-                                    height={32}
-                                    className="w-8 h-8 rounded-full border border-slate-300"
-                                />
-                        </div>
-                        <div className="bg-white border border-gray-200 rounded-lg p-3">
-                            <div className="flex space-x-2">
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
-                            </div>
-                        </div>
-                    </div>
-                )}
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void sendMessage();
+    }
+  };
 
-                <div ref={messagesEndRef} />
-            </div>
+  const isEmpty = messages.length === 0 && !error;
+  const lastMessage = messages[messages.length - 1];
 
-            {/* Input */}
-            <div className="border-t border-gray-200 p-4 bg-white rounded-b-lg">
-                <div className="flex gap-2">
-                    <input
-                        ref={inputRef}
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyPress}
-                        placeholder="Type your message..."
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-600 focus:border-transparent text-gray-800"
-                        disabled={isLoading}
-                        autoFocus
-                    />
-                    <button
-                        onClick={() => sendMessage()}
-                        disabled={!input.trim() || isLoading}
-                        className="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                        <Send className="w-5 h-5" />
-                    </button>
-                </div>
-            </div>
+  return (
+    <section
+      className="flex flex-col h-full min-h-0 bg-gray-50 dark:bg-slate-900 rounded-lg shadow-lg border border-gray-200 dark:border-slate-700"
+      aria-label="Chat with the digital twin"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-slate-700 to-slate-800 text-white px-4 py-3 rounded-t-lg">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Bot className="w-5 h-5" aria-hidden="true" />
+            AI Digital Twin
+          </h2>
+          <p className="text-xs text-slate-300 truncate">{profile.full_name}&apos;s AI Digital Twin</p>
         </div>
-    );
+        <button
+          type="button"
+          onClick={newChat}
+          className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          <SquarePen className="w-4 h-4" aria-hidden="true" />
+          New chat
+        </button>
+      </div>
+
+      {/* Messages */}
+      <div
+        ref={paneRef}
+        onScroll={handlePaneScroll}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 sm:px-4 py-4 space-y-4"
+        aria-live="polite"
+        aria-relevant="additions text"
+        aria-busy={isStreaming}
+      >
+        {isEmpty && (
+          <div className="text-center text-gray-600 dark:text-slate-300 mt-6">
+            <div className="flex justify-center mb-3">
+              <Avatar size={80} />
+            </div>
+            <p className="text-lg">Hello! I&apos;m {profile.full_name}&apos;s Digital Twin.</p>
+            <p className="text-sm mt-2">Ask me anything about {profile.name}, or start with one of these:</p>
+            <ul className="flex flex-wrap justify-center gap-2 mt-4 px-2" aria-label="Suggested questions">
+              {profile.suggested_questions.map((q) => (
+                <li key={q}>
+                  <button
+                    type="button"
+                    onClick={() => void sendMessage(q)}
+                    className="px-3 py-1.5 text-sm rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600 dark:focus-visible:ring-slate-300"
+                  >
+                    {q}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs mt-4 text-gray-500 dark:text-slate-400">
+              What this twin knows: {profile.name}&apos;s resume/LinkedIn and project notes, last updated {profile.knowledge_updated}.
+            </p>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            streaming={isStreaming && message.id === lastMessage?.id && message.role === 'assistant'}
+            onFeedback={message.role === 'assistant' ? (rating) => void rate(message, rating) : undefined}
+          />
+        ))}
+
+        {error && (
+          <div role="alert" className="flex gap-3 justify-start">
+            <Avatar />
+            <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-bl-md px-4 py-3 bg-red-50 border border-red-200 text-red-900 dark:bg-red-950 dark:border-red-900 dark:text-red-100">
+              <p>{error.message}</p>
+              <div className="flex gap-2 mt-2">
+                {error.retryText && error.code !== 'session_full' && (
+                  <button
+                    type="button"
+                    onClick={retry}
+                    className="inline-flex items-center gap-1 text-sm px-3 py-1 rounded-md bg-white border border-red-300 text-red-900 hover:bg-red-100 dark:bg-red-900 dark:border-red-700 dark:text-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
+                    <RotateCcw className="w-4 h-4" aria-hidden="true" />
+                    Retry
+                  </button>
+                )}
+                {error.code === 'session_full' && (
+                  <button
+                    type="button"
+                    onClick={newChat}
+                    className="text-sm px-3 py-1 rounded-md bg-white border border-red-300 text-red-900 hover:bg-red-100 dark:bg-red-900 dark:border-red-700 dark:text-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  >
+                    Start a new chat
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Composer */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void sendMessage();
+        }}
+        className="border-t border-gray-200 dark:border-slate-700 p-3 sm:p-4 bg-white dark:bg-slate-800 rounded-b-lg"
+        style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+      >
+        <div className="flex gap-2 items-end">
+          <label htmlFor="chat-input" className="sr-only">
+            Message the digital twin
+          </label>
+          <textarea
+            id="chat-input"
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={`Ask ${profile.name} something…`}
+            rows={1}
+            maxLength={MAX_INPUT_CHARS}
+            disabled={isStreaming}
+            autoFocus
+            enterKeyHint="send"
+            className="flex-1 resize-none px-4 py-2.5 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 placeholder:text-gray-500 dark:placeholder:text-slate-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600 dark:focus-visible:ring-slate-300 disabled:opacity-60"
+          />
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={stopStreaming}
+              aria-label="Stop generating"
+              className="h-11 w-11 shrink-0 inline-flex items-center justify-center bg-gray-200 dark:bg-slate-700 text-gray-800 dark:text-slate-100 rounded-xl hover:bg-gray-300 dark:hover:bg-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600"
+            >
+              <Square className="w-4 h-4" aria-hidden="true" fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              aria-label="Send message"
+              disabled={!input.trim()}
+              className="h-11 w-11 shrink-0 inline-flex items-center justify-center bg-slate-700 text-white rounded-xl hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-600 dark:focus-visible:ring-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <Send className="w-5 h-5" aria-hidden="true" />
+            </button>
+          )}
+        </div>
+        <p className="mt-1.5 text-xs text-gray-500 dark:text-slate-400">
+          Enter to send, Shift+Enter for a new line.
+          <span className="sr-only"> Maximum {MAX_INPUT_CHARS} characters.</span>
+        </p>
+      </form>
+    </section>
+  );
 }
