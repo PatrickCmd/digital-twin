@@ -222,6 +222,6 @@ backend/       FastAPI app, Lambda handler, shell deployment scripts
 frontend/      Next.js app (static export)
 terraform/     Infrastructure as Code (modules, workspaces, environments)
 scripts/       Terraform deploy, destroy, and invalidation scripts
-docs/          Course materials and docs/improvement-plan.md (review + roadmap)
+docs/          Course materials, improvement-plan.md (review + roadmap), follow-ups.md (open items)
 memory/        Local conversation, feedback and contact storage (dev only)
 ```

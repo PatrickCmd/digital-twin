@@ -92,25 +92,10 @@ Implements the plan in `docs/improvement-plan.md`. One commit per item.
   `us-east-1` are defaults, and existing AWS resources are imported before `apply` so
   the scripts are safe to re-run.
 
-### Not done / needs a decision from Patrick
-- **Re-run the OIDC setup.** `./scripts/setup-github-oidc.sh` then
-  `./scripts/setup-github-secrets.sh` to create the plan role and tighten the deploy
-  role. Then add yourself as a required reviewer on the `prod` environment in GitHub.
-- **Deploy.** Nothing has been deployed. Pushing to `main` deploys **dev**; production
-  only updates through a manual "Deploy Digital Twin" workflow run with `prod` selected.
-- **Shared rate limit.** `enable_rate_limit_table = true` creates a pay-per-request
-  DynamoDB table so the limit is shared across Lambda instances. Off by default, so
-  today the limit is per warm container only (API Gateway stage throttling still applies).
-- **Contact email.** `enable_contact_email = true` with `contact_from_email` (a verified
-  SES identity) and `contact_to_email`. Off by default; messages are still stored in S3.
-- **True streaming.** Responses still arrive buffered because API Gateway HTTP API +
-  Mangum cannot stream. The client already handles real streaming; the infra option is a
-  Lambda Function URL with `RESPONSE_STREAM` plus the Lambda Web Adapter (replacing
-  Mangum), or a different compute target. Not implemented.
-- **Resume PDF.** `links.resume_pdf` is null; set it to a public URL to show the link.
-- **Recruiter facts.** `remote_preference`, `work_authorization`, `notice_period` and
-  `availability` are null in `profile.json`; fill them to show them on the card and let
-  the twin answer them.
-- **Eval run.** `eval_twin.py` could not be run here (no AWS credentials); run it locally
-  or against the deployed API after the next deploy.
-- **Terraform.** `terraform validate` passes; `plan`/`apply` were not run.
+### Status (2026-11-05)
+- Dev and prod are deployed from `main`; the grounding eval passes 10/10 on both.
+- OIDC bootstrap re-run: plan role created, deploy role trust tightened, secrets set.
+- Remaining decisions and optional work are tracked in `docs/follow-ups.md`
+  (prod environment protection, recruiter facts and resume link, two soft answers,
+  the DynamoDB rate-limit and SES contact-email flags, log queries, true streaming,
+  deploy-role hardening).
