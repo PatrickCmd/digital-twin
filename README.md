@@ -27,7 +27,7 @@ Browser → CloudFront (HTTPS) → S3 (static frontend)
 **Backend:**
 ```bash
 cd backend
-cp ../.env.example .env  # add your OPENAI_API_KEY
+cp .env.example .env  # set DEFAULT_AWS_REGION / BEDROCK_MODEL_ID as needed
 uv add -r requirements.txt
 uv run uvicorn server:app --reload
 ```

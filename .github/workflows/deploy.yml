@@ -2,7 +2,7 @@ name: Deploy Digital Twin
 
 on:
   push:
-    branches: [main, day5-digital-twin-aws-terraform-cicd]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:

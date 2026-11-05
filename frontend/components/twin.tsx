@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { Send, Bot, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -117,14 +118,6 @@ export default function Twin() {
         setTimeout(() => inputRef.current?.focus(), 100);
     };
 
-    // Check if avatar exists
-    const [hasAvatar, setHasAvatar] = useState(false);
-    useEffect(() => {
-        fetch('/avatar.png', { method: 'HEAD' })
-            .then(res => setHasAvatar(res.ok))
-            .catch(() => setHasAvatar(false));
-    }, []);
-
     const handleKeyPress = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -140,23 +133,21 @@ export default function Twin() {
                     <Bot className="w-6 h-6" />
                     AI Digital Twin
                 </h2>
-                <p className="text-sm text-slate-300 mt-1">Patrick Walukagga's AI Digital Twin</p>
+                <p className="text-sm text-slate-300 mt-1">Patrick Walukagga&apos;s AI Digital Twin</p>
             </div>
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.length === 0 && (
                     <div className="text-center text-gray-500 mt-8">
-                        {hasAvatar ? (
-                            <img
-                                src="/avatar.png"
-                                alt="Digital Twin Avatar"
-                                className="w-20 h-20 rounded-full mx-auto mb-3 border-2 border-gray-300"
-                            />
-                        ) : (
-                            <Bot className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                        )}
-                        <p>Hello! I'm Patrick Walukagga's Digital Twin.</p>
+                        <Image
+                            src="/avatar.png"
+                            alt="Patrick Walukagga"
+                            width={80}
+                            height={80}
+                            className="w-20 h-20 rounded-full mx-auto mb-3 border-2 border-gray-300"
+                        />
+                        <p>Hello! I&apos;m Patrick Walukagga&apos;s Digital Twin.</p>
                         <p className="text-sm mt-2">Ask me anything about Patrick Walukagga!</p>
                     </div>
                 )}
@@ -170,17 +161,13 @@ export default function Twin() {
                     >
                         {message.role === 'assistant' && (
                             <div className="flex-shrink-0">
-                                {hasAvatar ? (
-                                    <img
-                                        src="/avatar.png"
-                                        alt="Digital Twin Avatar"
-                                        className="w-8 h-8 rounded-full border border-slate-300"
-                                    />
-                                ) : (
-                                    <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
-                                        <Bot className="w-5 h-5 text-white" />
-                                    </div>
-                                )}
+                                <Image
+                                    src="/avatar.png"
+                                    alt=""
+                                    width={32}
+                                    height={32}
+                                    className="w-8 h-8 rounded-full border border-slate-300"
+                                />
                             </div>
                         )}
 
@@ -222,17 +209,13 @@ export default function Twin() {
                 {isLoading && (
                     <div className="flex gap-3 justify-start">
                         <div className="flex-shrink-0">
-                            {hasAvatar ? (
-                                <img
+                            <Image
                                     src="/avatar.png"
-                                    alt="Digital Twin Avatar"
+                                    alt=""
+                                    width={32}
+                                    height={32}
                                     className="w-8 h-8 rounded-full border border-slate-300"
                                 />
-                            ) : (
-                                <div className="w-8 h-8 bg-slate-700 rounded-full flex items-center justify-center">
-                                    <Bot className="w-5 h-5 text-white" />
-                                </div>
-                            )}
                         </div>
                         <div className="bg-white border border-gray-200 rounded-lg p-3">
                             <div className="flex space-x-2">
