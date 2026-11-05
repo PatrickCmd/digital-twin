@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.0"
+  required_version = ">= 1.9.0, < 2.0.0" # CI pins 1.9.8 (TF_VERSION in the workflows)
 
   required_providers {
     aws = {

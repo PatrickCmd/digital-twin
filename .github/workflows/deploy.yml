@@ -19,6 +19,16 @@ permissions:
   id-token: write
   contents: read
 
+# One apply per environment at a time; never cancel a running apply.
+concurrency:
+  group: terraform-apply-${{ github.event.inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: '1.9.8'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: '0'
+
 jobs:
   deploy:
     name: Deploy to ${{ github.event.inputs.environment || 'dev' }}
@@ -49,6 +59,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Setup Node.js

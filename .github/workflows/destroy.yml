@@ -19,6 +19,16 @@ permissions:
   id-token: write
   contents: read
 
+# Share the per-environment lock with deploy.yml so destroy and apply never overlap.
+concurrency:
+  group: terraform-apply-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: '1.9.8'
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: '0'
+
 jobs:
   destroy:
     name: Destroy ${{ github.event.inputs.environment }}
@@ -49,6 +59,7 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
       - name: Run Destroy Script

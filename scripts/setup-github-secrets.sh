@@ -21,6 +21,7 @@ fi
 # Auto-detect values
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/github-actions-twin-deploy"
+AWS_PLAN_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/github-actions-twin-plan"
 
 # Verify the role exists
 if ! aws iam get-role --role-name github-actions-twin-deploy &> /dev/null; then
@@ -32,6 +33,7 @@ fi
 echo ""
 echo "Secrets to set:"
 echo "  AWS_ROLE_ARN       = ${AWS_ROLE_ARN}"
+echo "  AWS_PLAN_ROLE_ARN  = ${AWS_PLAN_ROLE_ARN} (if the role exists)"
 echo "  DEFAULT_AWS_REGION = ${AWS_REGION}"
 echo "  AWS_ACCOUNT_ID     = ${AWS_ACCOUNT_ID}"
 echo ""
@@ -39,6 +41,13 @@ echo ""
 # Set secrets
 echo "Setting AWS_ROLE_ARN..."
 gh secret set AWS_ROLE_ARN --body "${AWS_ROLE_ARN}"
+
+if aws iam get-role --role-name github-actions-twin-plan &> /dev/null; then
+  echo "Setting AWS_PLAN_ROLE_ARN..."
+  gh secret set AWS_PLAN_ROLE_ARN --body "${AWS_PLAN_ROLE_ARN}"
+else
+  echo "Plan role not found; skipping AWS_PLAN_ROLE_ARN (terraform-plan.yml will fall back to AWS_ROLE_ARN)."
+fi
 
 echo "Setting DEFAULT_AWS_REGION..."
 gh secret set DEFAULT_AWS_REGION --body "${AWS_REGION}"

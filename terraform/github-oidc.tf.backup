@@ -38,8 +38,15 @@ resource "aws_iam_role" "github_actions" {
           StringEquals = {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
+          # Only jobs that run inside a GitHub Environment (deploy.yml / destroy.yml)
+          # can assume the apply role. Protect "prod" with required reviewers in
+          # GitHub: Settings > Environments.
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:*"
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:${var.github_repository}:environment:dev",
+              "repo:${var.github_repository}:environment:test",
+              "repo:${var.github_repository}:environment:prod",
+            ]
           }
         }
       }
@@ -133,6 +140,78 @@ resource "aws_iam_role_policy" "github_additional" {
   })
 }
 
+# Read-only role for terraform-plan.yml (pull requests, drift checks, manual plans).
+# It can read AWS, read state from the S3 bucket and take the DynamoDB lock, but
+# cannot change infrastructure.
+resource "aws_iam_role" "github_actions_plan" {
+  name = "github-actions-twin-plan"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.github.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
+            "token.actions.githubusercontent.com:sub" = [
+              "repo:${var.github_repository}:pull_request",
+              "repo:${var.github_repository}:ref:refs/heads/main",
+            ]
+          }
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name       = "GitHub Actions Plan Role"
+    Repository = var.github_repository
+    ManagedBy  = "terraform"
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "github_plan_readonly" {
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+  role       = aws_iam_role.github_actions_plan.name
+}
+
+resource "aws_iam_role_policy" "github_plan_state" {
+  name = "github-actions-plan-state"
+  role = aws_iam_role.github_actions_plan.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadState"
+        Effect = "Allow"
+        Action = ["s3:GetObject", "s3:ListBucket"]
+        Resource = [
+          "arn:aws:s3:::twin-terraform-state-${data.aws_caller_identity.current.account_id}",
+          "arn:aws:s3:::twin-terraform-state-${data.aws_caller_identity.current.account_id}/*",
+        ]
+      },
+      {
+        Sid      = "StateLock"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = "arn:aws:dynamodb:*:${data.aws_caller_identity.current.account_id}:table/twin-terraform-locks"
+      },
+    ]
+  })
+}
+
 output "github_actions_role_arn" {
   value = aws_iam_role.github_actions.arn
+}
+
+output "github_actions_plan_role_arn" {
+  value = aws_iam_role.github_actions_plan.arn
 }

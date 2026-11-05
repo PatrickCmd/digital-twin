@@ -56,7 +56,25 @@ Implements the plan in `docs/improvement-plan.md`. One commit per item.
 - Title, description, canonical, OpenGraph / Twitter tags, generated `public/og.png`,
   Person JSON-LD, `robots.txt`, `sitemap.xml`, theme-color.
 
+### 7. Terraform in CI (plan on PR, apply stays in deploy)
+- `terraform-plan.yml`: on pull requests builds the Lambda package and runs
+  `fmt -check`, `validate` and `plan` for dev and prod against the existing S3 +
+  DynamoDB backend, posts one comment per environment on the PR, and runs weekly as a
+  drift check (fails on changes). Manual runs can plan any environment. Never applies.
+- `deploy.yml` / `destroy.yml`: pinned Terraform 1.9.8, non-interactive flags,
+  per-environment concurrency group so applies and destroys never overlap;
+  `deploy.sh` uses `fmt -check` in CI and `-lock-timeout=5m`.
+- OIDC bootstrap (`terraform/github-oidc.tf.backup`): deploy role trust pinned to
+  `environment:dev|test|prod` subjects; new read-only `github-actions-twin-plan` role
+  (ReadOnlyAccess + state bucket read + lock table). Setup scripts create it and set
+  `AWS_PLAN_ROLE_ARN`. Until the scripts are re-run, the plan workflow falls back to
+  `AWS_ROLE_ARN`.
+- `required_version` pinned to `>= 1.9.0, < 2.0.0`.
+
 ### Not done / needs a decision from Patrick
+- **Re-run the OIDC setup.** `./scripts/setup-github-oidc.sh` then
+  `./scripts/setup-github-secrets.sh` to create the plan role and tighten the deploy
+  role. Then add yourself as a required reviewer on the `prod` environment in GitHub.
 - **Deploy.** Nothing has been deployed. Pushing to `main` deploys **dev**; production
   only updates through a manual "Deploy Digital Twin" workflow run with `prod` selected.
 - **Shared rate limit.** `enable_rate_limit_table = true` creates a pay-per-request

@@ -247,9 +247,15 @@ GitHub Actions → requests OIDC JWT → AWS STS validates token → assumes IAM
 | Resource | Name | Purpose |
 |----------|------|---------|
 | **OIDC Provider** | `token.actions.githubusercontent.com` | Trust relationship between GitHub and AWS |
-| **IAM Role** | `github-actions-twin-deploy` | Role assumed by GitHub Actions workflows |
+| **IAM Role** | `github-actions-twin-deploy` | Apply role, assumed only by jobs running in a GitHub Environment (`deploy.yml`, `destroy.yml`) |
 | **Managed Policies** | 9 AWS policies | Lambda, S3, API Gateway, CloudFront, IAM Read, Bedrock, DynamoDB, ACM, Route53 |
 | **Inline Policy** | `github-actions-additional` | IAM write permissions for Terraform to manage roles |
+| **IAM Role** | `github-actions-twin-plan` | Read-only plan role for `terraform-plan.yml` (pull requests, drift checks). `ReadOnlyAccess` plus read on the state bucket and lock on the DynamoDB table |
+
+Trust policies are pinned to the OIDC `sub` claim: the deploy role trusts
+`repo:<owner>/<repo>:environment:{dev,test,prod}` and the plan role trusts
+`repo:<owner>/<repo>:pull_request` and `repo:<owner>/<repo>:ref:refs/heads/main`.
+No long-lived AWS keys exist anywhere in the pipeline.
 
 #### Setup
 
@@ -277,18 +283,47 @@ The script auto-detects `AWS_ACCOUNT_ID` and `AWS_ROLE_ARN` from your AWS accoun
 | Secret | Value | Source |
 |--------|-------|--------|
 | `AWS_ROLE_ARN` | `arn:aws:iam::<account_id>:role/github-actions-twin-deploy` | Auto-detected |
+| `AWS_PLAN_ROLE_ARN` | `arn:aws:iam::<account_id>:role/github-actions-twin-plan` | Auto-detected (skipped if the role does not exist yet; `terraform-plan.yml` then falls back to `AWS_ROLE_ARN`) |
 | `DEFAULT_AWS_REGION` | `us-east-1` | Script argument (default) |
 | `AWS_ACCOUNT_ID` | Your 12-digit AWS account ID | Auto-detected |
 
+### GitHub Environments (approval gate)
+
+The deploy and destroy jobs run inside a GitHub Environment named after the target
+(`dev`, `test`, `prod`). Configure them once in **Settings > Environments**:
+
+- `prod`: add yourself as a **required reviewer** and restrict deployments to the `main`
+  branch. A prod deploy then waits for your approval and is recorded in the environment's
+  deployment history.
+- `dev` / `test`: no protection needed.
+
+Because the deploy role's trust policy only accepts `environment:*` subjects, a job that
+does not run in an environment cannot assume it.
+
 ### GitHub Actions Workflows
 
-Two workflows in `.github/workflows/`:
+Three workflows in `.github/workflows/`. All use the same S3 + DynamoDB backend,
+pin Terraform `1.9.8`, run non-interactively (`TF_IN_AUTOMATION`, `TF_INPUT=0`,
+`-lock-timeout=5m`) and share a per-environment concurrency group so an apply and a
+destroy never overlap.
+
+#### Terraform Plan (`terraform-plan.yml`) — never applies
+
+- **Pull requests** to `main` that touch `terraform/`, `backend/`, `scripts/deploy.sh` or the
+  workflows: builds the Lambda package (the Lambda resource hashes it), then runs
+  `fmt -check`, `validate` and `plan` for **dev** and **prod**, writes each plan to the job
+  summary and posts/updates one comment per environment on the PR.
+- **Weekly** (Mondays 06:17 UTC): drift check; the job fails if a plan shows changes.
+- **Manual**: plan `dev`, `test`, `prod` or `all`.
+- Uses the read-only plan role (`AWS_PLAN_ROLE_ARN`).
 
 #### Deploy (`deploy.yml`)
 
-- **Auto-triggers** on push to `main` or `day5-digital-twin-aws-terraform-cicd` branches (deploys to dev)
-- **Manual trigger** via GitHub Actions UI with environment choice (dev/test/prod)
-- Steps: checkout, OIDC auth, setup Python + uv + Terraform + Node.js, run `deploy.sh`, get outputs, invalidate CloudFront
+- **Auto-triggers** on push to `main` (deploys to **dev** only)
+- **Manual trigger** via GitHub Actions UI with environment choice (dev/test/prod); `prod`
+  waits for the environment's required reviewer
+- Steps: checkout, OIDC auth, setup Python + uv + Terraform + Node.js, run `deploy.sh`
+  (`fmt -check`, `validate`, `apply`), get outputs, invalidate CloudFront
 
 #### Destroy (`destroy.yml`)
 
@@ -307,7 +342,7 @@ The script is interactive and requires confirmation at each destructive step:
 
 | Step | Resource | Cost if kept |
 |------|----------|-------------|
-| 1 | IAM Role `github-actions-twin-deploy` + all policies | Free |
+| 1 | IAM Roles `github-actions-twin-deploy` and `github-actions-twin-plan` + policies | Free |
 | 2 | S3 Bucket `twin-terraform-state-<account_id>` (all versions) | ~$0.02/month |
 | 3 | DynamoDB Table `twin-terraform-locks` | ~$0.00/month (PAY_PER_REQUEST) |
 | 4 | OIDC Provider (optional — skip if other roles use it) | Free |
